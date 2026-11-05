@@ -1,6 +1,7 @@
 
 import { Platform } from "react-native";
 import * as MediaLibrary from "expo-media-library/legacy";
+import Constants from "expo-constants";
 
 import {
   addSong,
@@ -28,6 +29,10 @@ function getFormatFromFilename(filename) {
 export const requestMusicPermission = async () => {
   if (Platform.OS === "web") {
     throw new Error("Music scanning is not supported on web.");
+  }
+
+  if (Constants.appOwnership === "expo") {
+    return false;
   }
 
   const permission =

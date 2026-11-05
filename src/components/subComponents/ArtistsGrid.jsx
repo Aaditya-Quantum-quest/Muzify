@@ -260,15 +260,6 @@ const ArtistsSection = memo(function ArtistsSection({
     return String(item.id ?? item.name ?? index);
   }, []);
 
-  if (!loading && safeArtists.length === 0) {
-    return null;
-  }
-
-  const listHeight = avatarSize + 70;
-
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   const listProps = useMemo(
     () =>
       snap
@@ -280,6 +271,12 @@ const ArtistsSection = memo(function ArtistsSection({
         : {},
     [snap, avatarSize, gap],
   );
+
+  if (!loading && safeArtists.length === 0) {
+    return null;
+  }
+
+  const listHeight = avatarSize + 70;
 
   return (
     <View className={className}>

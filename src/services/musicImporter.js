@@ -4,6 +4,7 @@ import { getCachedArtwork } from "./artworkCache";
 import { cleanSongTitle, getFilenameFromUri, parseMetadataFromFilename } from "./folderScanner.js";
 import * as FileSystem from "expo-file-system/legacy";
 import * as MediaLibrary from "expo-media-library/legacy";
+import Constants from "expo-constants";
 import { onSongAdded, rebuildCollaborations, backfillAllSongs, notifyArtistsChanged } from "./artists/artistSync";
 import { db } from "../databases/db.js";
 
@@ -459,8 +460,11 @@ export async function repairLibraryMetadata() {
 
       // Query MediaLibrary for durations (indexed by Android MediaStore)
       const durationMap = new Map();
+      const isExpoGo = Constants.appOwnership === "expo";
       try {
-        const perm = await MediaLibrary.getPermissionsAsync(false, ["audio"]);
+        const perm = isExpoGo
+          ? { granted: false }
+          : await MediaLibrary.getPermissionsAsync(false, ["audio"]);
         if (perm?.granted) {
           let after = undefined;
           let hasNext = true;
