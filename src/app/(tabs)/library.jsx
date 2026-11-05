@@ -526,6 +526,7 @@ export default function LibraryScreen() {
     hasMore,
     totalSongs,
     loadMoreSongs,
+    refreshSongs,
   } = useSongs({
     search: filter === "All" ? query : "",
     sort,

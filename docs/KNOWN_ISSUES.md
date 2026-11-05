@@ -63,8 +63,10 @@ Previously identified areas requiring implementation verification:
 2. Real music library queue versus fallback demo tracks. — Library and artist play use SQLite `file_uri`. Demo `TRACKS` remain a visual fallback only.
 3. Playlist listing implementation.
 4. Native audio metadata reading and writing.
-5. Android permissions and storage compatibility.
+5. Android permissions and storage compatibility. — `expo-media-library` plugin now requests AUDIO only. Manifest still needs a native rebuild. `READ_MEDIA_AUDIO` remains in `withMuzifyPermissions.js`.
 6. EAS build queue and account-specific behavior.
+
+Resolved in JS (verify on device): Library `refreshSongs` crash; nested SQLite transaction in `backfillAllSongs`.
 
 These are investigation topics, not automatically confirmed bugs.
 

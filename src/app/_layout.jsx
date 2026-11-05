@@ -42,37 +42,35 @@ const RootLayout = () => {
     queueMicrotask(() => {
       try {
         initializeDatabase();
-        // Repair any existing songs with missing artist / album / duration
-        import('../services/musicImporter.js').then(async ({ repairLibraryMetadata }) => {
-          try {
-            await repairLibraryMetadata();
-          } catch (e) {
-            console.warn('Metadata repair error', e);
-          }
+        // Repair then backfill sequentially so they do not share overlapping SQLite txns.
+        Promise.resolve()
+          .then(async () => {
+            try {
+              const { repairLibraryMetadata } = await import('../services/musicImporter.js');
+              await repairLibraryMetadata();
+            } catch (e) {
+              console.warn('Metadata repair error', e);
+            }
+            try {
+              const { backfillAllSongs } = await import('../services/artists/artistSync.js');
+              await backfillAllSongs();
+            } catch (e) {
+              console.warn('Artist backfill error', e);
+            }
+            try {
+              const { getArtists } = await import('../services/artists/artistRepository.js');
+              const { enqueueArtist } = await import('../services/artists/enrichmentService.js');
+              const artists = getArtists({ limit: 5000 });
+              for (const a of artists) {
+                try { enqueueArtist(a.id, 'normal'); } catch (_) {}
+              }
+            } catch (e) {
+              console.warn('Enqueue all artists failed', e);
+            }
+          });
+        import('../services/artists/enrichmentService.js').then(({ startEnrichmentQueue }) => {
+          startEnrichmentQueue();
         });
-        // Kick off one‑time artist backfill (non‑blocking).
-    import('../services/artists/artistSync.js').then(async ({ backfillAllSongs }) => {
-      try {
-        await backfillAllSongs();
-      } catch (e) {
-        console.warn('Artist backfill error', e);
-      }
-      // After backfill, enqueue all artists for background enrichment.
-      try {
-        const { getArtists } = await import('../services/artists/artistRepository.js');
-        const { enqueueArtist } = await import('../services/artists/enrichmentService.js');
-        const artists = getArtists({ limit: 5000 });
-        for (const a of artists) {
-          try { enqueueArtist(a.id, 'normal'); } catch (_) {}
-        }
-      } catch (e) {
-        console.warn('Enqueue all artists failed', e);
-      }
-    });
-    // Start the background enrichment queue (MusicBrainz / Last.fm).
-    import('../services/artists/enrichmentService.js').then(({ startEnrichmentQueue }) => {
-      startEnrichmentQueue();
-    });
 
         if (active) setDatabaseReady(true);
         console.log("Muzify database initialized successfully");

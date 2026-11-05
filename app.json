@@ -37,6 +37,13 @@
           "recordAudioAndroid": false
         }
       ],
+      [
+        "expo-media-library",
+        {
+          "granularPermissions": ["audio"],
+          "isAccessMediaLocationEnabled": false
+        }
+      ],
       "./config-plugins/withMuzifyPermissions.js",
       "./config-plugins/withJaudiotagger.js",
       "./modules/audio-metadata/app.plugin.js"

@@ -120,7 +120,7 @@ export function backfillAllSongs() {
             if (credits.artists.length === 1 && GENERIC.test(credits.artists[0].name)) {
               removeSongArtists(song.id);
             } else {
-              upsertArtistsForSongRepo(song.id, credits);
+              upsertArtistsForSongRepo(song.id, credits, { alreadyInTransaction: true });
             }
           }
           db.execSync('COMMIT');

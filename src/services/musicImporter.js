@@ -460,7 +460,7 @@ export async function repairLibraryMetadata() {
       // Query MediaLibrary for durations (indexed by Android MediaStore)
       const durationMap = new Map();
       try {
-        const perm = await MediaLibrary.getPermissionsAsync();
+        const perm = await MediaLibrary.getPermissionsAsync(false, ["audio"]);
         if (perm?.granted) {
           let after = undefined;
           let hasNext = true;

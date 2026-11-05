@@ -48,6 +48,35 @@ List affected documentation.
 
 ---
 
+### 2026-11-05 — Library Crash, Nested SQLite Txn, MediaLibrary AUDIO
+
+**Category:** Bug Fix / Native / Build
+
+**Summary:**
+Fixed the Library `refreshSongs` ReferenceError, nested SQLite `BEGIN` during artist backfill, and undeclared MediaLibrary AUDIO permission.
+
+**Files Modified:**
+- `src/app/(tabs)/library.jsx`
+- `src/services/artists/artistRepository.js`
+- `src/services/artists/artistSync.js`
+- `src/app/_layout.jsx`
+- `src/services/musicImporter.js`
+- `app.json`
+
+**Technical Details:**
+Library now destructures `refreshSongs` from `useSongs()`. `upsertArtistsForSong` skips an inner `BEGIN` when the backfill batch already opened a transaction. Boot repair and backfill run sequentially. `expo-media-library` is declared with `granularPermissions: ["audio"]`.
+
+**Compatibility:**
+JS fixes apply on reload. The MediaLibrary AUDIO manifest change needs a native Android rebuild.
+
+**Documentation Updated:**
+- `docs/KNOWN_ISSUES.md`
+- `docs/ANDROID_NATIVE.md`
+- `docs/PROGRESS.md`
+- `docs/CHANGELOG.md`
+
+---
+
 ### 2026-11-05 — Real Audio Playback Wired
 
 **Category:** Feature / Architecture / Audio

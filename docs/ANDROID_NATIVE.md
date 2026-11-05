@@ -34,11 +34,13 @@ Verify the current module definition and registration before modifying it.
 
 Existing plugin files:
 
-- `config-plugins/withMuzifyPermissions.js`
+- `config-plugins/withMuzifyPermissions.js` — `READ_MEDIA_AUDIO`, `READ_EXTERNAL_STORAGE`, `POST_NOTIFICATIONS`
 - `config-plugins/withJaudiotagger.js`
 - `modules/audio-metadata/app.plugin.js`
+- `expo-audio` in `app.json` — background playback
+- `expo-media-library` in `app.json` — `granularPermissions: ["audio"]`
 
-Their responsibilities must be verified by reading the plugin implementations.
+Plugin and manifest changes require a native Android rebuild. A JS reload is not enough.
 
 ## 5. Android Permissions
 

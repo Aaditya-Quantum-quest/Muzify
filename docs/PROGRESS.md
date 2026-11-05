@@ -85,18 +85,21 @@ Real `expo-audio` playback was wired without replacing UI.
 | `src/players/` screens | Still simulated; not on live routes; UI preserved |
 | Playlist screens | Still local/demo play state |
 | Background / lock screen | Plugin added; needs a **native rebuild** to take effect |
+| Library `refreshSongs` crash | Fixed: destructured from `useSongs()` |
+| Nested SQLite txn in backfill | Fixed: inner upsert skips `BEGIN`; boot repair then backfill |
+| MediaLibrary AUDIO permission | Plugin declared; needs a **native rebuild** |
 | Lint | Not run here (`node_modules` was not present) |
 
 ## Remaining (not done this session)
 
+- Native rebuild after `expo-audio` and `expo-media-library` plugin changes.
 - Connect live routes to full-screen player screens without replacing their UI.
 - Wire playlist play into `playSongs`.
 - Verify metadata write, Android storage permissions, and EAS builds on device.
-- Native rebuild after the `expo-audio` plugin change.
 
 ## How To Verify
 
-1. Scan/import a local music folder so songs have `file_uri`.
-2. Play a song from Library or an artist profile.
-3. Confirm MiniPlayer title, play/pause, shuffle, and progress follow real audio.
-4. Rebuild the Android binary if background or lock-screen controls are required.
+1. Reload JS: open Library — no `refreshSongs` crash.
+2. Confirm logs no longer show nested SQLite `BEGIN` / `backfillAllSongs failed`.
+3. Native rebuild, then confirm MediaLibrary AUDIO is no longer undeclared.
+4. Play a song from Library or an artist profile; MiniPlayer should follow real audio.

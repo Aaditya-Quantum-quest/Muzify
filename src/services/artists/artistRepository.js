@@ -320,28 +320,39 @@ export function removeSongArtists(songId) {
   db.runSync('DELETE FROM song_artists WHERE song_id = ?', [songId]);
 }
 
+function applyArtistsForSong(songId, artists) {
+  removeSongArtists(songId);
+  for (const a of artists) {
+    const normalized = normalizeArtistName(a.name);
+    if (!normalized || normalized === 'unknown artist') continue;
+    const artistId = upsertArtist({
+      name: a.name,
+      normalized_name: normalized,
+    });
+    db.runSync(
+      'INSERT OR IGNORE INTO song_artists (song_id, artist_id, role, position) VALUES (?, ?, ?, ?)',
+      [songId, artistId, a.role || 'primary', a.position ?? 0]
+    );
+  }
+}
+
 /**
- * Upsert parsed artist credits for a song inside a single transaction.
+ * Upsert parsed artist credits for a song.
+ * Pass alreadyInTransaction when the caller already opened a SQLite txn
+ * (nested BEGIN is rejected by expo-sqlite).
  */
-export function upsertArtistsForSong(songId, parsedCredits) {
+export function upsertArtistsForSong(songId, parsedCredits, { alreadyInTransaction = false } = {}) {
   const { artists = [] } = parsedCredits || {};
   if (songId == null || !artists.length) return;
 
+  if (alreadyInTransaction) {
+    applyArtistsForSong(songId, artists);
+    return;
+  }
+
   db.execSync('BEGIN TRANSACTION');
   try {
-    removeSongArtists(songId);
-    for (const a of artists) {
-      const normalized = normalizeArtistName(a.name);
-      if (!normalized || normalized === 'unknown artist') continue;
-      const artistId = upsertArtist({
-        name: a.name,
-        normalized_name: normalized,
-      });
-      db.runSync(
-        'INSERT OR IGNORE INTO song_artists (song_id, artist_id, role, position) VALUES (?, ?, ?, ?)',
-        [songId, artistId, a.role || 'primary', a.position ?? 0]
-      );
-    }
+    applyArtistsForSong(songId, artists);
     db.execSync('COMMIT');
   } catch (err) {
     db.execSync('ROLLBACK');
