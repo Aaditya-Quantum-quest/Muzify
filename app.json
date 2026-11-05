@@ -3,6 +3,7 @@
     "name": "Muzify-App",
     "slug": "Muzify-App",
     "version": "1.0.0",
+    "scheme": "muzify",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -15,10 +16,29 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "versionCode": 1,
+      "package": "com.aaditya_aks.muzify"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-font",
+      "expo-asset",
+      "expo-sqlite",
+      "./config-plugins/withMuzifyPermissions.js",
+      "./config-plugins/withJaudiotagger.js",
+      "./modules/audio-metadata/app.plugin.js"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "fc8976eb-c084-4c3b-9ce1-22bd190e0cb0"
+      }
     }
   }
 }

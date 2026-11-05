@@ -1,0 +1,9 @@
+/home/aaditya/Muzify/Muzify-App/AGENTS.md
+/home/aaditya/Muzify/Muzify-App/MERMAID.md
+/home/aaditya/Muzify/Muzify-App/src/widgets/test.html
+/home/aaditya/Muzify/Muzify-App/assets/android-icon-background.png
+/home/aaditya/Muzify/Muzify-App/assets/android-icon-foreground.png
+/home/aaditya/Muzify/Muzify-App/assets/android-icon-monochrome.png
+/home/aaditya/Muzify/Muzify-App/assets/favicon.png
+/home/aaditya/Muzify/Muzify-App/assets/icon.png
+/home/aaditya/Muzify/Muzify-App/assets/splash-icon.png

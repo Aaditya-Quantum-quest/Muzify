@@ -1,0 +1,158 @@
+{
+  "nodes": [
+    {
+      "id": "agents_exporouter",
+      "label": "Expo Router",
+      "file_type": "concept",
+      "source_file": "/home/aaditya/Muzify/Muzify-App/AGENTS.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "agents_expo_go",
+      "label": "Expo Go",
+      "file_type": "concept",
+      "source_file": "/home/aaditya/Muzify/Muzify-App/AGENTS.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "agents_eas_build",
+      "label": "EAS Build",
+      "file_type": "concept",
+      "source_file": "/home/aaditya/Muzify/Muzify-App/AGENTS.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "agents_prefer_expo_modules",
+      "label": "Prefer recommended Expo modules",
+      "file_type": "rationale",
+      "source_file": "/home/aaditya/Muzify/Muzify-App/AGENTS.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "mermaid_file_map",
+      "label": "File map diagram",
+      "file_type": "concept",
+      "source_file": "/home/aaditya/Muzify/Muzify-App/MERMAID.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "test_html_now_playing",
+      "label": "Now Playing page",
+      "file_type": "document",
+      "source_file": "/home/aaditya/Muzify/Muzify-App/src/widgets/test.html",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "assets_android_icon_background_image",
+      "label": "Android Icon Background Image",
+      "file_type": "image",
+      "source_file": "/home/aaditya/Muzify/Muzify-App/assets/android-icon-background.png",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "assets_android_icon_monochrome_image",
+      "label": "Android Monochrome Icon",
+      "file_type": "image",
+      "source_file": "/home/aaditya/Muzify/Muzify-App/assets/android-icon-monochrome.png",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "assets_icon_image",
+      "label": "App Icon",
+      "file_type": "image",
+      "source_file": "/home/aaditya/Muzify/Muzify-App/assets/icon.png",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    }
+  ],
+  "edges": [
+    {
+      "source": "agents_exporouter",
+      "target": "agents_expo_go",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/aaditya/Muzify/Muzify-App/AGENTS.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "agents_exporouter",
+      "target": "agents_eas_build",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/aaditya/Muzify/Muzify-App/AGENTS.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "agents_prefer_expo_modules",
+      "target": "agents_exporouter",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/aaditya/Muzify/Muzify-App/AGENTS.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "mermaid_file_map",
+      "target": "agents_exporouter",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "/home/aaditya/Muzify/Muzify-App/MERMAID.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "test_html_now_playing",
+      "target": "agents_expo_go",
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "/home/aaditya/Muzify/Muzify-App/src/widgets/test.html",
+      "source_location": null,
+      "weight": 1.0
+    }
+  ],
+  "hyperedges": [],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

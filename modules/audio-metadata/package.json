@@ -1,0 +1,19 @@
+{
+  "name": "@muzify/audio-metadata",
+  "version": "1.0.0",
+  "description": "Native Android audio metadata extractor (MediaMetadataRetriever + SAF content URIs)",
+  "main": "index.tsx",
+  "types": "index.tsx",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "source": "./index.tsx",
+      "types": "./index.tsx",
+      "default": "./index.tsx"
+    }
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  }
+}
