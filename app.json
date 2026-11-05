@@ -30,6 +30,13 @@
       "expo-font",
       "expo-asset",
       "expo-sqlite",
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": true,
+          "recordAudioAndroid": false
+        }
+      ],
       "./config-plugins/withMuzifyPermissions.js",
       "./config-plugins/withJaudiotagger.js",
       "./modules/audio-metadata/app.plugin.js"

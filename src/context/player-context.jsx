@@ -1,8 +1,9 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
-  useState,
   useEffect,
+  useState,
 } from 'react';
 import { playbackQueue } from '../services/audio/PlaybackQueue';
 
@@ -26,15 +27,13 @@ const PlayerContext = createContext(null);
 export function PlayerProvider({ children }) {
   const [playerTheme, setPlayerTheme] = useState('player8');
   const [trackIdx, setTrackIdxState] = useState(0);
-  const [pos, setPos] = useState(76);
-  const [playing, setPlaying] = useState(true);
+  const [pos, setPos] = useState(0);
+  const [playing, setPlaying] = useState(false);
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState('welcome');
   const [musicFolder, setMusicFolder] = useState('/Music');
-  // Real-library queue. When empty the player falls back to TRACKS so the
-  // UI never shows a broken "now playing" bar before a scan has run.
   const [queue, setQueue] = useState([]);
   const [queueIdx, setQueueIdx] = useState(0);
 
@@ -42,61 +41,61 @@ export function PlayerProvider({ children }) {
     ? queue[queueIdx] || queue[0]
     : TRACKS[trackIdx] || TRACKS[0];
 
-  // Real playback – connect to PlaybackQueue on mount.
   useEffect(() => {
-    // Register callbacks to sync context state with the native engine.
     playbackQueue.setCallbacks({
       onPlayingChange: setPlaying,
       onPosChange: setPos,
+      onShuffleChange: setShuffle,
+      onRepeatChange: setRepeat,
       onTrackChange: (trackObj, idx) => {
-        // When a new track is loaded, update local indices.
         setQueueIdx(idx);
         setTrackIdxState(idx);
         setPos(0);
       },
-      onDurationChange: (duration) => {
-        // No direct state stored for duration; the UI reads it via track.duration.
-      },
     });
-    // Ensure the engine is ready (configures audio session).
-    playbackQueue._ensureEngine?.(); // initialize lazily.
+    playbackQueue._ensureEngine?.();
     return () => {
-      playbackQueue.destroy();
+      playbackQueue.setCallbacks({});
     };
   }, []);
 
-  const togglePlay = () => playbackQueue.togglePlay();
-  const toggleShuffle = () => playbackQueue.toggleShuffle();
-  const toggleRepeat = () => playbackQueue.toggleRepeat();
+  const togglePlay = useCallback(() => {
+    playbackQueue.togglePlay();
+  }, []);
 
-  const goNext = () => {
+  const toggleShuffle = useCallback(() => {
+    setShuffle(playbackQueue.toggleShuffle());
+  }, []);
+
+  const toggleRepeat = useCallback(() => {
+    setRepeat(playbackQueue.toggleRepeat());
+  }, []);
+
+  const goNext = useCallback(() => {
     playbackQueue.goNext();
-  };
+  }, []);
 
-  const goPrev = () => {
+  const goPrev = useCallback(() => {
     playbackQueue.goPrev();
-  };
+  }, []);
 
-  // Replace the active queue with real songs from the library.
-  // `songs` is an array of song records (as returned by the song queries).
-  // `startIndex` picks which song starts playing.
-  const playSongs = async (songs, startIndex = 0) => {
+  const playSongs = useCallback(async (songs, startIndex = 0) => {
     if (!Array.isArray(songs) || songs.length === 0) return;
-    const safeIndex = Math.min(
-      Math.max(0, startIndex),
-      songs.length - 1
-    );
-    // Set the queue and start playback at the requested index.
+    const safeIndex = Math.min(Math.max(0, startIndex), songs.length - 1);
+    setQueue(songs);
+    setQueueIdx(safeIndex);
+    setTrackIdxState(safeIndex);
+    setPos(0);
     await playbackQueue.setQueue(songs, safeIndex);
-      setQueue(songs); // sync local queue for UI
-      setQueueIdx(safeIndex);
-  };
+  }, []);
 
-  // For UI elements that need to jump to a specific track (e.g., queue selection).
-  // Explicit callbacks to change JSI queue index and position if called directly.
-  const setTrackFromIdx = (idx) => playbackQueue.setTrackIdx(idx);
-  const seekTo = (posSec) => playbackQueue.seek(posSec);
+  const setTrackFromIdx = useCallback((idx) => {
+    playbackQueue.setTrackIdx(idx);
+  }, []);
 
+  const seekTo = useCallback((posSec) => {
+    playbackQueue.seek(posSec);
+  }, []);
 
   const completeOnboarding = (folder) => {
     if (folder) setMusicFolder(folder);
@@ -114,13 +113,14 @@ export function PlayerProvider({ children }) {
         setPlayerTheme,
         trackIdx,
         setTrackIdxState,
-        setTrackIdx: setTrackIdxState,
+        setTrackIdx: setTrackFromIdx,
         track,
         playing,
         setPlaying,
         togglePlay,
         pos,
         setPos,
+        seekTo,
         shuffle,
         toggleShuffle,
         repeat,
@@ -133,6 +133,8 @@ export function PlayerProvider({ children }) {
         setOnboardingStep,
         musicFolder,
         setMusicFolder,
+        queue,
+        queueIdx,
         playSongs,
         completeOnboarding,
         resetOnboarding,

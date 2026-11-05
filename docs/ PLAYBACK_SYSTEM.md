@@ -74,21 +74,20 @@ When changing queue behavior, verify:
 
 ## 5. Actual Audio Playback
 
-IMPORTANT:
+Playback is implemented with `expo-audio` (SDK 57), not `expo-av`.
 
-A React state value such as `playing = true` does not prove that an actual audio file is playing.
+Architecture:
 
-The previously inspected player context included a JavaScript interval that advanced playback position and demo track state.
+- `src/services/audio/audioConfig.js` — audio session (`playsInSilentMode`, `shouldPlayInBackground`, `interruptionMode: doNotMix`).
+- `src/services/audio/AudioEngine.js` — wraps `createAudioPlayer`, loads `{ uri }`, play/pause/seek, status listener, lock-screen metadata.
+- `src/services/audio/PlaybackQueue.js` — queue, shuffle, repeat, next/prev, play-count updates.
+- `src/context/player-context.jsx` — UI state synced from engine callbacks. `playSongs(songs, startIndex)` loads the queue and starts real audio.
 
-That implementation alone is not a real audio playback engine.
+Library song rows and artist play actions call `playSongs` with SQLite records that include `file_uri`.
 
-`expo-av` is installed (v16.0.8, Expo SDK 57) as the audio playback engine.
+Demo `TRACKS` remain only as a visual fallback when no library queue has been set. They have no `file_uri`, so they cannot produce audio.
 
-Do not assume `expo-av` is configured just because it is installed — inspect the
-actual playback implementation before relying on it. The player context still
-simulates playback with a JS interval; real audio is not yet wired in.
-
-Inspect the actual playback implementation before changing it.
+`app.json` includes the `expo-audio` config plugin with `enableBackgroundPlayback: true`. A native rebuild is required for background playback and lock-screen controls.
 
 ## 6. Playback Architecture Rules
 

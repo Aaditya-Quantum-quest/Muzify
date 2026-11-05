@@ -32,7 +32,8 @@ export default function MiniPlayerBar({
     togglePlay,
     shuffle,
     toggleShuffle,
-      } = usePlayer();
+    pos,
+  } = usePlayer();
 
   const current = {
     title: track?.title ?? 'No track',
@@ -43,8 +44,6 @@ export default function MiniPlayerBar({
 
   const C = { text: "#fff", mut: "#888", lime: "#7CFC00" };
   const shuffled = shuffle;
-  const setShuffled = toggleShuffle;
-  const setPlaying = togglePlay;
 
   const [hidden, setHidden] = useState(false);
 
@@ -193,7 +192,7 @@ export default function MiniPlayerBar({
 
         {/* Shuffle */}
         <TouchableOpacity
-          onPress={() => setShuffled((s) => !s)}
+          onPress={toggleShuffle}
           accessibilityRole="button"
           accessibilityLabel="Shuffle"
           accessibilityState={{ selected: shuffled }}
@@ -228,13 +227,13 @@ export default function MiniPlayerBar({
               strokeWidth={3}
               strokeLinecap="round"
               strokeDasharray={150.8}
-              strokeDashoffset={150.8 * 0.65}
+              strokeDashoffset={150.8 * (1 - (Number(track?.duration) > 0 ? Math.min(1, Math.max(0, pos / Number(track.duration))) : 0))}
             />
           </Svg>
 
           <TouchableOpacity
             className="absolute inset-1.5 items-center justify-center rounded-full bg-white/10"
-            onPress={() => setPlaying((p) => !p)}
+            onPress={togglePlay}
             activeOpacity={0.8}
             accessibilityRole="button"
             accessibilityLabel={playing ? "Pause" : "Play"}

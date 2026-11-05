@@ -39,6 +39,7 @@ import { useSongs } from "../../hooks/useSongs.js";
 import { getSavedMusicFolder } from "../../services/musicFolder.js";
 import { useHideTabBarOnScroll } from "../../components/ui/BottomBar";
 import { parseMetadataFromFilename } from "../../services/folderScanner.js";
+import { usePlayer } from "../../context/player-context";
 
 /* ───────────── palette (was constants/design) ───────────── */
 const C = {
@@ -503,10 +504,10 @@ export default function LibraryScreen() {
   const [sort, setSort] = useState(0);
   const [gridView, setGridView] = useState(false);
 
-  const [cur, setCur] = useState(0);
-  const [playing, setPlaying] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [shuffled, setShuffled] = useState(false);
+  const { playSongs, togglePlay, track, playing } = usePlayer();
+  const cur = track?.id;
 
   // Long-press context menu state
   const [ctxItem, setCtxItem] = useState(null);
@@ -620,12 +621,14 @@ export default function LibraryScreen() {
           );
 
   const play = (id) => {
-    if (id === cur) {
-      setPlaying((p) => !p);
-    } else {
-      setCur(id);
-      setPlaying(true);
+    if (filter !== "All") return;
+    const songIndex = dbSongs.findIndex((song) => song.id === id);
+    if (songIndex < 0) return;
+    if (track?.id === id) {
+      togglePlay();
+      return;
     }
+    playSongs(dbSongs, songIndex);
   };
 
   const goArtists = () => router.push("/settings");

@@ -59,8 +59,8 @@ Explain how the fix should be tested.
 
 Previously identified areas requiring implementation verification:
 
-1. Actual audio playback versus simulated playback state.
-2. Real music library queue versus fallback demo tracks.
+1. Actual audio playback versus simulated playback state. — Real `expo-audio` playback is wired for library and artist queues. Standalone player screens (`src/players/`) still simulate progress and are not on the live route tree.
+2. Real music library queue versus fallback demo tracks. — Library and artist play use SQLite `file_uri`. Demo `TRACKS` remain a visual fallback only.
 3. Playlist listing implementation.
 4. Native audio metadata reading and writing.
 5. Android permissions and storage compatibility.

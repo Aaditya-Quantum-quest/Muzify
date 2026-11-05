@@ -26,6 +26,7 @@ const SONG_FIELDS = [
   "duration",
   "file_uri",
   "played_times",
+  "play_count",
   "last_played",
 ];
 

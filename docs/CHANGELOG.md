@@ -48,6 +48,36 @@ List affected documentation.
 
 ---
 
+### 2026-11-05 — Real Audio Playback Wired
+
+**Category:** Feature / Architecture / Audio
+
+**Summary:**
+Wired `expo-audio` through AudioEngine and PlaybackQueue so library and artist play actions load real `file_uri` sources and start playback instead of simulating progress.
+
+**Files Modified:**
+- `src/services/audio/AudioEngine.js`
+- `src/services/audio/PlaybackQueue.js`
+- `src/services/audio/audioConfig.js`
+- `src/context/player-context.jsx`
+- `src/app/(tabs)/library.jsx`
+- `src/components/ui/MiniPlayer.jsx`
+- `src/databases/queries/song.js`
+- `app.json`
+
+**Technical Details:**
+`playSongs` now loads the queue and calls play. Library rows use the shared player instead of local fake state. MiniPlayer play/shuffle and progress ring follow engine status. `play_count` is writable. expo-audio plugin enables background playback.
+
+**Compatibility:**
+Expo SDK 57 / expo-audio. Native rebuild required for background playback and lock-screen controls.
+
+**Documentation Updated:**
+- `docs/PLAYBACK_SYSTEM.md`
+- `docs/KNOWN_ISSUES.md`
+- `docs/CHANGELOG.md`
+
+---
+
 ### 2026-11-06 — Artist Database & Discovery System
 
 **Category:** Feature / Database / Architecture
