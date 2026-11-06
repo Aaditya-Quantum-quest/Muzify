@@ -1,5 +1,6 @@
 import { AudioEngine, configureAudioSessionOnce } from './AudioEngine';
 import { updateSong } from '../../databases/queries/song.js';
+import { listenTracker } from './listenTracker';
 
 export class PlaybackQueue {
   constructor() {
@@ -66,6 +67,7 @@ export class PlaybackQueue {
     const duration = status.duration ?? 0;
     if (this._onDurationChange) this._onDurationChange(duration);
     this._persistDuration(duration);
+    listenTracker.tick(!!status.playing, status.currentTime ?? 0, duration);
   }
 
   _persistDuration(duration) {
@@ -85,7 +87,8 @@ export class PlaybackQueue {
 
   _handleTrackEnded() {
     if (this._advancing) return;
-    this.goNext();
+    listenTracker.complete();
+    this.goNext({ fromEnd: true });
   }
 
   async togglePlay() {
@@ -108,6 +111,7 @@ export class PlaybackQueue {
   }
 
   async stop() {
+    listenTracker.end();
     await this._ensureEngine();
     this.engine.stop();
   }
@@ -130,6 +134,7 @@ export class PlaybackQueue {
       if (loaded) {
         this.currentIdx = safeIdx;
         this._recordPlay(track);
+        listenTracker.start(track, track.duration);
         if (this._onTrackChange) this._onTrackChange(track, this.currentIdx);
         return true;
       }
@@ -146,8 +151,9 @@ export class PlaybackQueue {
     this.engine.play();
   }
 
-  async goNext() {
+  async goNext({ fromEnd = false } = {}) {
     if (!this.queue.length) return;
+    if (!fromEnd) listenTracker.skip();
     this._advancing = true;
     try {
       let nextIdx;
@@ -181,6 +187,7 @@ export class PlaybackQueue {
       await this.seek(0);
       return;
     }
+    listenTracker.end();
     const prevIdx = this.currentIdx - 1;
     const loaded = await this._loadTrackAt(prevIdx < 0 ? this.queue.length - 1 : prevIdx);
     if (loaded) await this.playCurrent();
@@ -199,6 +206,7 @@ export class PlaybackQueue {
   }
 
   async setTrackIdx(idx) {
+    if (idx !== this.currentIdx) listenTracker.skip();
     const loaded = await this._loadTrackAt(idx);
     if (loaded) await this.playCurrent();
   }
@@ -223,6 +231,7 @@ export class PlaybackQueue {
   }
 
   destroy() {
+    listenTracker.end();
     if (this.engine) {
       this.engine.destroy();
       this.engine = null;
