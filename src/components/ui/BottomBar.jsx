@@ -26,11 +26,12 @@ const BAR_BORDER = "#26262c";
 const INACTIVE = "#d6d4de";
 const ON_AMBER = "#2a1500";
 
-/* ───────────── layout ───────────── */
-const SIZE = 60; // tab height and active circle diameter
-const PAD = 6; // bar inner padding
-const ICON = 24;
-const BAR_HEIGHT = SIZE + PAD * 2 + 2; // tabs + padding + both borders
+/* ───────────── layout (compact) ───────────── */
+const TAB_W = 52; // width of each tab and the active pill
+const TAB_H = 38; // tab height and active pill height
+const PAD = 4; // bar inner padding
+const ICON = 20;
+const BAR_HEIGHT = TAB_H + PAD * 2 + 2; // tabs + padding + both borders
 
 /* ───────────── swipe behaviour ───────────── */
 const SWIPE_DISTANCE = 24; // px of vertical travel before the bar reacts
@@ -103,8 +104,8 @@ function TabItem({
       accessibilityLabel={accessibilityLabel}
       testID={testID}
       style={{
-        flex: 1,
-        height: SIZE,
+        width: TAB_W,
+        height: TAB_H,
         alignItems: "center",
         justifyContent: "center",
       }}
@@ -120,16 +121,16 @@ function TabItem({
           <View
             style={{
               position: "absolute",
-              top: -5,
-              right: -7,
-              minWidth: 18,
-              height: 18,
-              paddingHorizontal: 5,
-              borderRadius: 9,
+              top: -4,
+              right: -6,
+              minWidth: 16,
+              height: 16,
+              paddingHorizontal: 4,
+              borderRadius: 8,
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: PINK,
-              borderWidth: 2,
+              borderWidth: 1.5,
               borderColor: focused ? AMBER : BAR_BG,
             }}
           >
@@ -137,10 +138,10 @@ function TabItem({
               <Text
                 style={{
                   color: "#fff",
-                  fontSize: 10,
+                  fontSize: 9,
                   fontWeight: "800",
                   includeFontPadding: false,
-                  lineHeight: 12,
+                  lineHeight: 11,
                 }}
               >
                 {badge}
@@ -156,7 +157,6 @@ function TabItem({
 /* ───────────── tab bar ───────────── */
 export default function BottomBar({ state, descriptors, navigation }) {
   const insets = useSafeAreaInsets();
-  const [barW, setBarW] = useState(0);
   const [hidden, setHidden] = useState(false);
 
   const hiddenRef = useRef(false);
@@ -170,14 +170,12 @@ export default function BottomBar({ state, descriptors, navigation }) {
   const bottomPadding = Math.max(insets.bottom, 16);
   const count = state.routes.length;
 
+  // The bar is fixed-size now: it only be as wide as its tabs.
+  const tabW = TAB_W;
+  const barWidth = count * TAB_W + PAD * 2 + 2; // tabs + padding + both borders
+
   // Distance needed to push the bar (and its shadow) fully below the screen.
   const hideDistance = BAR_HEIGHT + bottomPadding + 24;
-
-  // Account for both borders when measuring the tab content area.
-  const tabW =
-    barW > 0 && count > 0
-      ? (barW - PAD * 2 - 2) / count
-      : 0;
 
   const changeVisibility = useCallback(
     (nextHidden) => {
@@ -254,10 +252,7 @@ export default function BottomBar({ state, descriptors, navigation }) {
   );
 
   useEffect(() => {
-    if (!tabW) return;
-
-    const target =
-      PAD + state.index * tabW + (tabW - SIZE) / 2;
+    const target = PAD + state.index * tabW;
 
     if (!placed.current) {
       indicatorX.value = target;
@@ -318,14 +313,12 @@ export default function BottomBar({ state, descriptors, navigation }) {
         importantForAccessibility={
           hidden ? "no-hide-descendants" : "auto"
         }
-        onLayout={(e) => setBarW(e.nativeEvent.layout.width)}
         style={{
-          width: "100%",
-          maxWidth: 420,
+          width: barWidth,
           flexDirection: "row",
           alignItems: "center",
           padding: PAD,
-          borderRadius: (SIZE + PAD * 2) / 2,
+          borderRadius: BAR_HEIGHT / 2,
           backgroundColor: BAR_BG,
           borderWidth: 1,
           borderColor: BAR_BORDER,
@@ -335,34 +328,32 @@ export default function BottomBar({ state, descriptors, navigation }) {
           ...Platform.select({
             ios: {
               shadowColor: "#000",
-              shadowOpacity: 0.45,
-              shadowRadius: 20,
-              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: 0.4,
+              shadowRadius: 14,
+              shadowOffset: { width: 0, height: 6 },
             },
             android: {
-              elevation: 12,
+              elevation: 8,
             },
           }),
         }}
       >
-        {/* Sliding amber indicator */}
-        {tabW > 0 ? (
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              {
-                position: "absolute",
-                left: 0,
-                top: PAD,
-                width: SIZE,
-                height: SIZE,
-                borderRadius: SIZE / 2,
-                backgroundColor: AMBER,
-              },
-              indicatorStyle,
-            ]}
-          />
-        ) : null}
+        {/* Sliding amber indicator (pill) */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            {
+              position: "absolute",
+              left: 0,
+              top: PAD,
+              width: TAB_W,
+              height: TAB_H,
+              borderRadius: TAB_H / 2,
+              backgroundColor: AMBER,
+            },
+            indicatorStyle,
+          ]}
+        />
 
         {/* Navigation buttons */}
         {state.routes.map((route, index) => {
@@ -418,8 +409,8 @@ export default function BottomBar({ state, descriptors, navigation }) {
           position: "absolute",
           bottom: bottomPadding,
           alignSelf: "center",
-          width: 88,
-          height: 44,
+          width: 64,
+          height: 32,
           opacity: handleOpacity,
           transform: [{ translateY: handleTranslateY }],
         }}
@@ -432,7 +423,7 @@ export default function BottomBar({ state, descriptors, navigation }) {
             flex: 1,
             alignItems: "center",
             justifyContent: "center",
-            borderRadius: 22,
+            borderRadius: 16,
             backgroundColor: BAR_BG,
             borderWidth: 1,
             borderColor: BAR_BORDER,
@@ -440,8 +431,8 @@ export default function BottomBar({ state, descriptors, navigation }) {
         >
           <View
             style={{
-              width: 34,
-              height: 4,
+              width: 26,
+              height: 3,
               borderRadius: 2,
               backgroundColor: AMBER,
             }}
