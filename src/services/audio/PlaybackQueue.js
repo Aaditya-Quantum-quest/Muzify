@@ -63,7 +63,24 @@ export class PlaybackQueue {
     if (!status) return;
     if (this._onPosChange) this._onPosChange(status.currentTime ?? 0);
     if (this._onPlayingChange) this._onPlayingChange(!!status.playing);
-    if (this._onDurationChange) this._onDurationChange(status.duration ?? 0);
+    const duration = status.duration ?? 0;
+    if (this._onDurationChange) this._onDurationChange(duration);
+    this._persistDuration(duration);
+  }
+
+  _persistDuration(duration) {
+    const track = this.getCurrentTrack();
+    if (!track || typeof track.id !== "number") return;
+    if (!Number.isFinite(duration) || duration <= 0) return;
+    if (track.duration && track.duration > 0) return;
+    const seconds = duration > 10000 ? Math.round(duration / 1000) : Math.round(duration);
+    if (seconds <= 0) return;
+    try {
+      updateSong(track.id, { duration: seconds });
+      track.duration = seconds;
+    } catch (error) {
+      console.warn("[PlaybackQueue] duration persist failed:", error);
+    }
   }
 
   _handleTrackEnded() {

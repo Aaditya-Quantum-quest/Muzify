@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -38,7 +38,11 @@ import MusicHeader from "../../components/subComponents/MusicHeader";
 import { useSongs } from "../../hooks/useSongs.js";
 import { getSavedMusicFolder } from "../../services/musicFolder.js";
 import { useHideTabBarOnScroll } from "../../components/ui/BottomBar";
-import { parseMetadataFromFilename } from "../../services/folderScanner.js";
+import {
+  getFilenameFromUri,
+  looksLikeUri,
+  parseMetadataFromFilename,
+} from "../../services/folderScanner.js";
 import { usePlayer } from "../../context/player-context";
 
 /* ───────────── palette (was constants/design) ───────────── */
@@ -182,7 +186,12 @@ function getFormat(song) {
   // unavailable - the extension is a weaker signal but better than nothing.
   if (song.file_format) return song.file_format;
   const source =
-    song.format ?? song.extension ?? song.path ?? song.uri ?? song.filename;
+    song.format ??
+    song.extension ??
+    song.path ??
+    song.uri ??
+    song.filename ??
+    song.file_uri;
   const ext = String(source ?? "")
     .split("?")[0]
     .split(".")
@@ -540,19 +549,34 @@ export default function LibraryScreen() {
     }
   }, [scanning, scanResult, loading, dbSongs.length, scanAndImport]);
 
-  // Auto-repair missing artists/albums/durations for already imported songs
+  const repairStarted = useRef(false);
   useEffect(() => {
-    if (loading || scanning) return;
+    if (loading || scanning || repairStarted.current || dbSongs.length === 0) return;
     const hasIncomplete = dbSongs.some(
-      (s) => !s.artist || s.artist === "Unknown Artist" || !s.duration || s.duration <= 0
+      (s) =>
+        !s.title ||
+        looksLikeUri(s.title) ||
+        !s.artist ||
+        s.artist === "Unknown Artist" ||
+        !s.duration ||
+        s.duration <= 0 ||
+        !s.artwork_uri
     );
-    if (hasIncomplete) {
-      import("../../services/musicImporter.js").then(({ repairLibraryMetadata }) => {
-        repairLibraryMetadata().then((res) => {
-          if (res?.repaired > 0) refreshSongs();
-        });
-      });
-    }
+    if (!hasIncomplete) return;
+    repairStarted.current = true;
+    import("../../services/musicImporter.js").then(
+      async ({ repairLibraryMetadata, enrichExistingSongs }) => {
+        try {
+          const repaired = await repairLibraryMetadata();
+          const enriched = await enrichExistingSongs({ batchSize: 8 });
+          if ((repaired?.repaired || 0) + (enriched?.updated || 0) > 0) {
+            refreshSongs();
+          }
+        } catch (error) {
+          console.warn("Library metadata repair failed:", error);
+        }
+      },
+    );
   }, [dbSongs, loading, scanning, refreshSongs]);
 
   // Keep the rest of your existing LibraryScreen code below this point.
@@ -561,12 +585,16 @@ export default function LibraryScreen() {
   const libraryItems = dbSongs.map((song) => {
     const isUnknownArtist = !song.artist || song.artist === "Unknown Artist" || song.artist === "Unknown";
     const isUnknownAlbum = !song.album || song.album === "Unknown Album" || song.album === "Unknown";
-    const parsed = (isUnknownArtist || isUnknownAlbum)
-      ? parseMetadataFromFilename(song.file_uri || song.title, song.file_uri)
+    const isBadTitle = !song.title || looksLikeUri(song.title);
+    const parsed = (isUnknownArtist || isUnknownAlbum || isBadTitle)
+      ? parseMetadataFromFilename(
+          getFilenameFromUri(song.file_uri) || song.title,
+          song.file_uri,
+        )
       : null;
 
-    const displayTitle = (isUnknownArtist && parsed?.title && parsed.title !== song.title)
-      ? parsed.title
+    const displayTitle = isBadTitle
+      ? (parsed?.title || getFilenameFromUri(song.file_uri) || "Unknown Title")
       : song.title;
     const displayArtist = isUnknownArtist
       ? (parsed?.artist || "Unknown Artist")

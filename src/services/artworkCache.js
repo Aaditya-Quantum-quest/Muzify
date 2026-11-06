@@ -52,22 +52,52 @@ export async function getCachedArtwork(contentUri) {
     return localUri;
   }
 
-  // Extract artwork from the audio file
   const dataUri = await getArtwork(contentUri);
-  if (!dataUri) {
+  if (dataUri) {
+    try {
+      const base64 = dataUri.replace(/^data:image\/[a-z]+;base64,/, "");
+      await FileSystem.writeAsStringAsync(localUri, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      return localUri;
+    } catch (error) {
+      console.warn("Failed to cache artwork:", error);
+    }
+  }
+
+  const folderCover = await findFolderCover(contentUri, localUri);
+  if (folderCover) return folderCover;
+
+  return null;
+}
+
+const COVER_NAME = /(?:^|\/)(cover|folder|album|albumart|artwork|front)\.(jpe?g|png|webp|bmp)$/i;
+
+async function findFolderCover(contentUri, destUri) {
+  const parentUri = String(contentUri).replace(/\/[^/]*$/, "");
+  if (!parentUri || parentUri === contentUri) return null;
+
+  let entries = [];
+  try {
+    entries = await FileSystem.StorageAccessFramework.readDirectoryAsync(parentUri);
+  } catch {
     return null;
   }
 
+  const coverUri = entries.find((entry) => {
+    try {
+      return COVER_NAME.test(decodeURIComponent(entry));
+    } catch {
+      return COVER_NAME.test(entry);
+    }
+  });
+  if (!coverUri) return null;
+
   try {
-    // Convert base64 data URI to a file
-    const base64 = dataUri.replace(/^data:image\/[a-z]+;base64,/, "");
-    await FileSystem.writeAsStringAsync(localUri, base64, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    return localUri;
-  } catch (error) {
-    console.warn("Failed to cache artwork:", error);
-    return null;
+    await FileSystem.copyAsync({ from: coverUri, to: destUri });
+    return destUri;
+  } catch {
+    return coverUri;
   }
 }
 

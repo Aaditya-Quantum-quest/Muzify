@@ -57,14 +57,33 @@ export const scanSelectedFolder = async (folderUri) => {
   return audioFiles;
 };
 
-// Utility functions exported for use by musicImporter.js
+export const looksLikeUri = (value = "") => {
+  const text = String(value);
+  return (
+    /^content:\/\//i.test(text) ||
+    /^file:\/\//i.test(text) ||
+    text.includes("primary:") ||
+    text.includes("com.android")
+  );
+};
+
 export const getFilenameFromUri = (fileUri) => {
-  const lastSegment = fileUri.split("/").pop() || "";
+  if (!fileUri) return "";
 
-  const decoded = decodeURIComponent(lastSegment);
+  let decoded = String(fileUri);
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    // Keep the raw value when it is not URI-encoded
+  }
 
-  // SAF may encode the entire storage path in one URI segment
-  return decoded.split(/[\\/]/).pop() || "";
+  const withoutQuery = decoded.split("?")[0];
+  const lastSegment = withoutQuery.split(/[\\/]/).pop() || "";
+  const afterColon = lastSegment.includes(":")
+    ? lastSegment.split(":").pop()
+    : lastSegment;
+
+  return afterColon.split(/[\\/]/).pop() || lastSegment;
 };
 
 // Clean filename and remove extension / encoding suffixes
@@ -99,11 +118,16 @@ export const cleanSongTitle = (filename) => {
  * @returns {{ title: string, artist: string, album: string }}
  */
 export const parseMetadataFromFilename = (filename, fileUri = "") => {
-  if (!filename) {
+  const source = looksLikeUri(filename)
+    ? getFilenameFromUri(filename)
+    : filename;
+  const uri = fileUri || (looksLikeUri(filename) ? filename : "");
+
+  if (!source) {
     return { title: "Unknown Title", artist: "Unknown Artist", album: "Single" };
   }
 
-  let clean = filename
+  let clean = source
     .replace(/\.[a-zA-Z0-9]{2,5}$/, "") // remove audio extension
     .replace(/[_]+/g, " ")             // replace underscores with spaces
     .replace(/\s+/g, " ")              // collapse spaces
@@ -150,8 +174,14 @@ export const parseMetadataFromFilename = (filename, fileUri = "") => {
 
   // Infer album from parent folder if available
   let album = "Single";
-  if (fileUri) {
-    const parts = decodeURIComponent(fileUri).split(/[\\/]/);
+  if (uri) {
+    let decodedUri = uri;
+    try {
+      decodedUri = decodeURIComponent(uri);
+    } catch {
+      decodedUri = uri;
+    }
+    const parts = decodedUri.split(/[\\/]/);
     if (parts.length >= 2) {
       const folder = parts[parts.length - 2];
       const ignoredFolders = [

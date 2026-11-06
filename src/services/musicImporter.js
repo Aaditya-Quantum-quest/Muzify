@@ -1,7 +1,7 @@
 import { addSong, getAllSongs, updateSong } from "../databases/queries/song.js";
-import { getMetadata, getAudioProperties } from "./audioMetadata";
+import { getMetadata, getAudioProperties, getDurationSeconds } from "./audioMetadata";
 import { getCachedArtwork } from "./artworkCache";
-import { cleanSongTitle, getFilenameFromUri, parseMetadataFromFilename } from "./folderScanner.js";
+import { cleanSongTitle, getFilenameFromUri, looksLikeUri, parseMetadataFromFilename } from "./folderScanner.js";
 import * as FileSystem from "expo-file-system/legacy";
 import * as MediaLibrary from "expo-media-library/legacy";
 import Constants from "expo-constants";
@@ -22,7 +22,11 @@ function normalizeMetadata(raw, fileUri) {
 
   const isGenericArtist = !rawArtist || rawArtist === "Unknown Artist" || rawArtist === "Unknown";
   const isGenericAlbum = !rawAlbum || rawAlbum === "Unknown Album" || rawAlbum === "Unknown";
-  const isGenericTitle = !rawTitle || rawTitle === "Unknown Title" || rawTitle === "Unknown";
+  const isGenericTitle =
+    !rawTitle ||
+    rawTitle === "Unknown Title" ||
+    rawTitle === "Unknown" ||
+    looksLikeUri(rawTitle);
 
   const artist = !isGenericArtist ? rawArtist : parsed.artist;
   const title = !isGenericTitle ? rawTitle : parsed.title;
@@ -97,6 +101,10 @@ export async function buildSongFromUri(fileUri) {
 
   // Normalize with fallbacks
   const meta = normalizeMetadata(raw, fileUri);
+  if (!meta.duration) {
+    const probed = await getDurationSeconds(fileUri);
+    if (probed > 0) meta.duration = Math.round(probed);
+  }
 
   // Extract and cache artwork
   const artworkUri = await getCachedArtwork(fileUri);
@@ -214,18 +222,18 @@ async function updateExistingSong(existingSong, fileUri) {
   const updates = {};
   let hasUpdates = false;
 
-  // Extract fresh metadata
   const raw = await getMetadata(fileUri);
-  if (!raw || Object.keys(raw).length === 0) {
-    return false;
+  const meta = normalizeMetadata(raw || {}, fileUri);
+  if (!meta.duration) {
+    const probed = await getDurationSeconds(fileUri);
+    if (probed > 0) meta.duration = Math.round(probed);
   }
 
-  const meta = normalizeMetadata(raw, fileUri);
-
-  // Update title if it's a filename-derived placeholder
+  // Update title if it's a filename-derived placeholder or a SAF URI
   if (
     !existingSong.title ||
     existingSong.title === "Unknown Title" ||
+    looksLikeUri(existingSong.title) ||
     existingSong.title.includes("primary:Download/") ||
     existingSong.title === cleanSongTitle(getFilenameFromUri(fileUri))
   ) {
@@ -301,7 +309,7 @@ async function updateExistingSong(existingSong, fileUri) {
   }
 
   // Update duration if placeholder (180) or missing
-  if (!existingSong.duration || existingSong.duration === 180) {
+  if (!existingSong.duration || existingSong.duration === 180 || existingSong.duration <= 0) {
     if (meta.duration > 0) {
       updates.duration = meta.duration;
       hasUpdates = true;
@@ -383,6 +391,7 @@ export const enrichExistingSongs = async (options = {}) => {
   const candidates = existingSongs.filter((song) =>
     !song.title ||
     song.title === "Unknown Title" ||
+    looksLikeUri(song.title) ||
     song.title.includes("primary:Download/") ||
     !song.artist ||
     song.artist === "Unknown Artist" ||
@@ -446,6 +455,8 @@ export async function repairLibraryMetadata() {
       // Check if any songs need repair
       const candidates = songs.filter(
         (s) =>
+          !s.title ||
+          looksLikeUri(s.title) ||
           !s.artist ||
           s.artist === "Unknown Artist" ||
           s.artist === "Unknown" ||
@@ -453,7 +464,8 @@ export async function repairLibraryMetadata() {
           s.album === "Unknown Album" ||
           s.album === "Unknown" ||
           !s.duration ||
-          s.duration <= 0
+          s.duration <= 0 ||
+          !s.artwork_uri
       );
 
       if (candidates.length === 0) return { repaired: 0 };
@@ -499,13 +511,17 @@ export async function repairLibraryMetadata() {
           const parsed = parseMetadataFromFilename(filename, song.file_uri);
 
           const updates = {};
+          const isBadTitle = !song.title || looksLikeUri(song.title);
           const isBadArtist = !song.artist || song.artist === "Unknown Artist" || song.artist === "Unknown";
           const isBadAlbum = !song.album || song.album === "Unknown Album" || song.album === "Unknown";
           const isBadDuration = !song.duration || song.duration <= 0;
 
+          if (isBadTitle && parsed.title && !looksLikeUri(parsed.title)) {
+            updates.title = parsed.title;
+          }
           if (isBadArtist && parsed.artist && parsed.artist !== "Unknown Artist") {
             updates.artist = parsed.artist;
-            if (parsed.title && parsed.title !== song.title) {
+            if (!updates.title && parsed.title && parsed.title !== song.title && !looksLikeUri(parsed.title)) {
               updates.title = parsed.title;
             }
           }
