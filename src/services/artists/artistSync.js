@@ -10,7 +10,7 @@ import {
   upsertArtistsForSong as upsertArtistsForSongRepo,
   rebuildArtistsForSong as rebuildArtistsForSongRepo,
 } from './artistRepository.js';
-import { buildCollaborationRelationships } from './recommendationService.js';
+import { buildCollaborationRelationships, rebuildForArtist } from './recommendationService.js';
 import {
   subscribeArtistsChanged,
   notifyArtistsChanged,
@@ -37,6 +37,7 @@ export function syncSongAdded(song) {
   if (!song || song.id == null) return;
   try {
     upsertArtistsForSong(song.id, song);
+    rebuildForAffectedArtists(song.id);
     notifyArtistsChanged();
   } catch (err) {
     console.warn('syncSongAdded artist sync failed', song.id, err);
@@ -71,6 +72,7 @@ export function syncSongUpdated(songId) {
   if (songId == null) return;
   try {
     rebuildArtistsForSongRepo(songId);
+    rebuildForAffectedArtists(songId);
     buildCollaborationRelationships();
     notifyArtistsChanged();
   } catch (err) {
@@ -78,6 +80,24 @@ export function syncSongUpdated(songId) {
   }
 }
 export const onSongEdited = syncSongUpdated;
+
+/**
+ * Recompute relationship rows for every artist linked to a song.
+ * Called after a song add/edit so the affected artists' "similar" lists
+ * stay in sync without a full-library rebuild.
+ */
+function rebuildForAffectedArtists(songId) {
+  const ids = db
+    .getAllSync('SELECT DISTINCT artist_id FROM song_artists WHERE song_id = ?', [songId])
+    .map((r) => r.artist_id);
+  for (const id of ids) {
+    try {
+      rebuildForArtist(id);
+    } catch (err) {
+      console.warn('rebuildForArtist failed for', id, err);
+    }
+  }
+}
 
 // ────────────────────────────────────────────── One-time Backfill ────────
 const BACKFILL_FLAG = 'artist_backfill_done';

@@ -4,6 +4,7 @@
 
 import { db } from '../../databases/db.js';
 import { normalizeArtistName } from './artistParser.js';
+import { getArtistById } from './artistRepository.js';
 
 /** Calculate collaboration score: weight by number of shared songs (capped at 3). */
 function calcCollaborationScore(sharedSongs) {
@@ -162,6 +163,165 @@ export function updateExternalSimilar(artistId, externalNames) {
       } catch (err) {
         console.warn('insert external similar failed', err);
       }
+    }
+  }
+}
+
+/**
+ * Recompute and store all relationship rows for a single artist.
+ *
+ * Deletes the artist's old rows from artist_relationships and re-inserts
+ * fresh ones (collaboration, genre_match, similar) in one transaction.
+ */
+export function rebuildForArtist(artistId) {
+  if (artistId == null) return;
+  const artist = getArtistById(artistId);
+  if (!artist) return;
+
+  const now = Date.now();
+
+  // ---- collaboration (shared songs) ----
+  const collabRows = db.getAllSync(
+    `SELECT sa2.artist_id AS related, COUNT(DISTINCT sa1.song_id) AS shared
+     FROM song_artists sa1
+     JOIN song_artists sa2
+       ON sa1.song_id = sa2.song_id AND sa2.artist_id <> sa1.artist_id
+     WHERE sa1.artist_id = ?
+     GROUP BY sa2.artist_id`,
+    [artistId]
+  );
+
+  // ---- genre match (Jaccard) ----
+  const genreRows = db.getAllSync(
+    `SELECT a.id, a.genres, GROUP_CONCAT(DISTINCT s.genre) AS songGenres
+     FROM artists a
+     JOIN song_artists sa ON sa.artist_id = a.id
+     LEFT JOIN songs s ON s.id = sa.song_id
+     GROUP BY a.id`
+  );
+
+  const genreMap = new Map();
+  for (const a of genreRows) {
+    const set = new Set();
+    if (a.genres) {
+      try {
+        const parsed = JSON.parse(a.genres);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((g) => set.add(g.toLowerCase().trim()));
+        }
+      } catch {
+        a.genres.split(',').forEach((g) => set.add(g.toLowerCase().trim()));
+      }
+    }
+    if (a.songGenres) {
+      a.songGenres.split(',').forEach((g) => {
+        const clean = g.toLowerCase().trim();
+        if (clean && clean !== 'unknown') set.add(clean);
+      });
+    }
+    if (set.size > 0) genreMap.set(a.id, Array.from(set));
+  }
+
+  const artistGenres = genreMap.get(artistId) || [];
+  const genreScores = [];
+  for (const [otherId, otherGenres] of genreMap) {
+    if (otherId === artistId) continue;
+    const intersection = artistGenres.filter((x) => otherGenres.includes(x)).length;
+    if (!intersection) continue;
+    const union = new Set([...artistGenres, ...otherGenres]).size;
+    const jaccard = intersection / union;
+    if (jaccard < 0.15) continue;
+    genreScores.push({ related: otherId, jaccard });
+  }
+
+  // ---- external similar (from cache) ----
+  const cacheRows = db.getAllSync(
+    `SELECT payload FROM artist_external_cache WHERE artist_id = ? AND provider = 'lastfm'`,
+    [artistId]
+  );
+  const externalNames = [];
+  for (const row of cacheRows) {
+    try {
+      const parsed = JSON.parse(row.payload);
+      if (parsed && Array.isArray(parsed.similar)) {
+        parsed.similar.forEach((s) => {
+          if (s && s.name) externalNames.push(s.name);
+        });
+      }
+    } catch (_) {}
+  }
+
+  // Resolve external names to local artist ids with songs.
+  const externalScores = [];
+  for (let rank = 0; rank < externalNames.length; rank++) {
+    const norm = normalizeArtistName(externalNames[rank]);
+    if (!norm) continue;
+    const match = db.getFirstSync(
+      `SELECT a.id FROM artists a
+       JOIN song_artists sa ON sa.artist_id = a.id
+       WHERE a.normalized_name = ? AND a.id <> ? AND a.id <> ?
+       LIMIT 1`,
+      [norm, artistId, artistId]
+    );
+    if (match) {
+      const similarity = Math.max(0.4, 1.0 - rank * 0.05);
+      externalScores.push({ related: match.id, similarity });
+    }
+  }
+
+  // ---- write everything in one transaction ----
+  db.execSync('BEGIN TRANSACTION');
+  try {
+    db.runSync('DELETE FROM artist_relationships WHERE artist_id = ?', [artistId]);
+
+    for (const c of collabRows) {
+      const collab = calcCollaborationScore(c.shared);
+      const score = 0.30 * collab;
+      db.runSync(
+        `INSERT OR REPLACE INTO artist_relationships (artist_id, related_artist_id, relationship_type, score, source, updated_at)
+         VALUES (?, ?, 'collaboration', ?, 'local', ?)`,
+        [artistId, c.related, score, now]
+      );
+    }
+
+    for (const g of genreScores) {
+      const score = 0.25 * g.jaccard;
+      db.runSync(
+        `INSERT OR REPLACE INTO artist_relationships (artist_id, related_artist_id, relationship_type, score, source, updated_at)
+         VALUES (?, ?, 'genre_match', ?, 'local', ?)`,
+        [artistId, g.related, score, now]
+      );
+    }
+
+    for (const e of externalScores) {
+      const score = 0.45 * e.similarity;
+      db.runSync(
+        `INSERT OR REPLACE INTO artist_relationships (artist_id, related_artist_id, relationship_type, score, source, updated_at)
+         VALUES (?, ?, 'similar', ?, 'lastfm', ?)`,
+        [artistId, e.related, score, now]
+      );
+    }
+
+    db.execSync('COMMIT');
+  } catch (err) {
+    db.execSync('ROLLBACK');
+    console.warn('rebuildForArtist error', artistId, err);
+  }
+}
+
+/**
+ * Batched rebuild for the whole library (used by backfill).
+ * Rebuilds each artist's relationships in batches to keep transactions
+ * small and to avoid blocking the UI thread for very large libraries.
+ */
+export function rebuildAll(batchSize = 500) {
+  const ids = db.getAllSync('SELECT id FROM artists', []).map((r) => r.id);
+  // rebuildForArtist owns its own transaction; batching here is just a
+  // progress checkpoint so a very large library doesn't run one huge txn.
+  for (let i = 0; i < ids.length; i += batchSize) {
+    const batch = ids.slice(i, i + batchSize);
+    for (const id of batch) {
+      rebuildForArtist(id);
     }
   }
 }
