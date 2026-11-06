@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,7 +6,20 @@ import {
   TouchableOpacity,
   Platform,
   useWindowDimensions,
+  Pressable,
 } from "react-native";
+
+import Animated, {
+  Easing,
+  FadeIn,
+  LinearTransition,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -265,9 +278,21 @@ function Card({ children, style }) {
 }
 
 const PILL = {
-  pos: { c: "#34d399", bg: "rgba(16,185,129,0.10)", bd: "rgba(16,185,129,0.25)" },
-  info: { c: "#22d3ee", bg: "rgba(6,182,212,0.10)", bd: "rgba(6,182,212,0.25)" },
-  pur: { c: "#a78bfa", bg: "rgba(139,92,246,0.10)", bd: "rgba(139,92,246,0.25)" },
+  pos: {
+    c: "#34d399",
+    bg: "rgba(16,185,129,0.10)",
+    bd: "rgba(16,185,129,0.25)",
+  },
+  info: {
+    c: "#22d3ee",
+    bg: "rgba(6,182,212,0.10)",
+    bd: "rgba(6,182,212,0.25)",
+  },
+  pur: {
+    c: "#a78bfa",
+    bg: "rgba(139,92,246,0.10)",
+    bd: "rgba(139,92,246,0.25)",
+  },
   neg: { c: "#fb7185", bg: "rgba(244,63,94,0.10)", bd: "rgba(244,63,94,0.25)" },
 };
 
@@ -337,7 +362,7 @@ function CardHeader({ icon, title, subtitle, value, note, variant = "pos" }) {
           <Text
             textTransform="capitalize"
             className="text-sm font-semibold uppercase text-[#f2f2f5]"
-            style={{ fontFamily: MONO, letterSpacing: 2.4 }}
+            style={{ letterSpacing: 2.4 }}
           >
             {title}
           </Text>
@@ -428,14 +453,7 @@ function AreaChart({
         <Svg width={W} height={height}>
           <Defs>
             {series.map((s, k) => (
-              <SvgGradient
-                key={k}
-                id={`${id}${k}`}
-                x1="0"
-                y1="0"
-                x2="0"
-                y2="1"
-              >
+              <SvgGradient key={k} id={`${id}${k}`} x1="0" y1="0" x2="0" y2="1">
                 <Stop offset="0" stopColor={s.c} stopOpacity={s.o} />
                 <Stop offset="1" stopColor={s.c} stopOpacity={0} />
               </SvgGradient>
@@ -733,7 +751,12 @@ function GenreRow({ label, pct, color, plays, active, onPress }) {
       }}
     >
       <View
-        style={{ height: 10, width: 10, borderRadius: 5, backgroundColor: color }}
+        style={{
+          height: 10,
+          width: 10,
+          borderRadius: 5,
+          backgroundColor: color,
+        }}
       />
       <Text
         textTransform="capitalize"
@@ -752,7 +775,12 @@ function GenreRow({ label, pct, color, plays, active, onPress }) {
       <Text
         textTransform="capitalize"
         className="text-xs font-bold"
-        style={{ fontFamily: MONO, color: "#22d3ee", minWidth: 48, textAlign: "right" }}
+        style={{
+          fontFamily: MONO,
+          color: "#22d3ee",
+          minWidth: 48,
+          textAlign: "right",
+        }}
       >
         {pct.toFixed(1)}%
       </Text>
@@ -773,7 +801,7 @@ function MiniCard({ icon, title, subtitle, value, note, variant, children }) {
       <Text
         textTransform="capitalize"
         className="text-[11px] font-semibold uppercase text-[#f2f2f5]"
-        style={{ fontFamily: MONO, letterSpacing: 1.8 }}
+        style={{ letterSpacing: 1.8 }}
         numberOfLines={1}
       >
         {title}
@@ -896,100 +924,244 @@ function Calendar({ onSelectDay }) {
 
 /* ───────────── rank row ───────────── */
 
-function RankRow({ initials, gradient, rank, title, subtitle, value, pct }) {
+function RankRow({
+  initials,
+  gradient,
+  rank,
+  title,
+  subtitle,
+  value,
+  pct,
+  index,
+}) {
   const [c1] = gradient ? gradient.split(",") : ["#555"];
+  const hasIndex = typeof index === "number";
+  const isFirst = hasIndex && index === 0;
+
+  const [active, setActive] = useState(false);
+  const scale = useSharedValue(1);
+  const fill = useSharedValue(0);
+
+  // bar fills in on mount, staggered per row
+  useEffect(() => {
+    fill.value = withDelay(
+      (index ?? 0) * 90,
+      withTiming(pct, {
+        duration: 750,
+        easing: Easing.out(Easing.cubic),
+      }),
+    );
+  }, [pct, index, fill]);
+
+  const pressStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const barStyle = useAnimatedStyle(() => ({
+    width: `${fill.value}%`,
+  }));
 
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 12,
-        marginBottom: 12,
-      }}
+    <Animated.View
+      layout={LinearTransition.springify().damping(18)}
+      style={[{ marginBottom: 12 }, pressStyle]}
     >
-      {initials ? (
-        <View
-          style={{
-            height: 48,
-            width: 48,
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: 24,
-            backgroundColor: c1,
-          }}
-        >
+      <Pressable
+        onPressIn={() => {
+          scale.value = withSpring(0.97, { damping: 15, stiffness: 300 });
+        }}
+        onPressOut={() => {
+          scale.value = withSpring(1, { damping: 12, stiffness: 260 });
+        }}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setActive((v) => !v);
+        }}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 14,
+          padding: 10,
+          borderRadius: 20,
+          borderWidth: 1,
+          borderColor: active
+            ? "rgba(228,159,51,0.35)"
+            : "rgba(255,255,255,0.04)",
+          backgroundColor: active
+            ? "rgba(228,159,51,0.08)"
+            : "rgba(255,255,255,0.025)",
+        }}
+      >
+        {initials ? (
+          <View>
+            {/* soft colored ring around the avatar */}
+            <View
+              style={{
+                padding: 2,
+                borderRadius: 30,
+                borderWidth: 1.5,
+                borderColor: active ? c1 : `${c1}66`,
+              }}
+            >
+              <View
+                style={{
+                  height: 46,
+                  width: 46,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 23,
+                  backgroundColor: c1,
+                }}
+              >
+                <Text
+                  textTransform="capitalize"
+                  className="text-sm font-bold text-white"
+                >
+                  {initials}
+                </Text>
+              </View>
+            </View>
+
+            {/* rank badge */}
+            {hasIndex ? (
+              <View
+                style={{
+                  position: "absolute",
+                  right: -4,
+                  bottom: -2,
+                  minWidth: 20,
+                  height: 20,
+                  paddingHorizontal: 4,
+                  borderRadius: 10,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: isFirst ? AM : "#242230",
+                  borderWidth: 2,
+                  borderColor: "#13121a",
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 10,
+                    fontWeight: "800",
+                    includeFontPadding: false,
+                    color: isFirst ? "#2a1500" : "#d6d4de",
+                  }}
+                >
+                  {index + 1}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        ) : (
           <Text
             textTransform="capitalize"
-            className="text-sm font-bold text-white"
+            className="text-center text-base font-bold text-[#9d9da8]"
+            style={{ width: 32 }}
           >
-            {initials}
+            {rank}
           </Text>
-        </View>
-      ) : (
-        <Text
-          textTransform="capitalize"
-          className="text-center text-base font-bold text-[#9d9da8]"
-          style={{ width: 32 }}
-        >
-          {rank}
-        </Text>
-      )}
+        )}
 
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text
-          textTransform="capitalize"
-          numberOfLines={1}
-          className="text-base font-bold text-[#f2f2f5]"
-        >
-          {title}
-        </Text>
-
-        {subtitle ? (
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Text
             textTransform="capitalize"
             numberOfLines={1}
-            className="mt-1 text-xs text-[#9d9da8]"
+            className="text-base font-bold text-[#f2f2f5]"
           >
-            {subtitle}
+            {title}
           </Text>
-        ) : null}
 
-        <View
-          style={{
-            marginTop: 8,
-            height: 5,
-            overflow: "hidden",
-            borderRadius: 999,
-            backgroundColor: "#242230",
-          }}
-        >
+          {subtitle ? (
+            <Text
+              textTransform="capitalize"
+              numberOfLines={1}
+              className="mt-1 text-xs text-[#9d9da8]"
+            >
+              {subtitle}
+            </Text>
+          ) : null}
+
+          {/* progress track with glowing knob */}
           <View
             style={{
-              height: "100%",
-              width: `${pct}%`,
+              marginTop: 10,
+              height: 6,
               borderRadius: 999,
-              backgroundColor: AM,
+              backgroundColor: "#242230",
             }}
-          />
-        </View>
-      </View>
+          >
+            <Animated.View
+              style={[
+                {
+                  height: "100%",
+                  borderRadius: 999,
+                  backgroundColor: AM,
+                },
+                barStyle,
+              ]}
+            >
+              <View
+                style={{
+                  position: "absolute",
+                  right: -3,
+                  top: -2,
+                  width: 10,
+                  height: 10,
+                  borderRadius: 5,
+                  backgroundColor: "#fff",
+                  borderWidth: 2,
+                  borderColor: AM,
+                  shadowColor: AM,
+                  shadowOpacity: 0.9,
+                  shadowRadius: 6,
+                  shadowOffset: { width: 0, height: 0 },
+                  elevation: 4,
+                }}
+              />
+            </Animated.View>
+          </View>
 
-      <Text
-        textTransform="capitalize"
-        className="text-sm font-semibold text-[#f2f2f5]"
-        style={{
-          fontVariant: ["tabular-nums"],
-          minWidth: 44,
-          textAlign: "right",
-        }}
-      >
-        {value}
-      </Text>
-    </View>
+          {/* revealed on tap */}
+          {active ? (
+            <Animated.Text
+              entering={FadeIn.duration(200)}
+              className="mt-2 text-xs text-[#9d9da8]"
+            >
+              {Math.round(pct)}% of your most-played artist
+            </Animated.Text>
+          ) : null}
+        </View>
+
+        {/* value pill */}
+        <View
+          style={{
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            borderRadius: 999,
+            minWidth: 44,
+            alignItems: "center",
+            backgroundColor: active
+              ? "rgba(228,159,51,0.22)"
+              : "rgba(228,159,51,0.12)",
+          }}
+        >
+          <Text
+            textTransform="capitalize"
+            className="text-sm font-semibold"
+            style={{
+              color: AM,
+              fontVariant: ["tabular-nums"],
+              textAlign: "center",
+            }}
+          >
+            {value}
+          </Text>
+        </View>
+      </Pressable>
+    </Animated.View>
   );
 }
-
 /* ───────────── habit tile ───────────── */
 
 function HabitTile({ label, value, note, valueClass = "text-xl" }) {
@@ -1055,6 +1227,8 @@ function FootStat({ label, value, color = "#f2f2f5" }) {
 /* ───────────── screen ───────────── */
 
 export default function StatisticsScreen() {
+
+
   const layout = useLayout();
   const { insets, padX } = layout;
   const router = useRouter();
@@ -1314,10 +1488,7 @@ export default function StatisticsScreen() {
 
             {/* ── calendar ── */}
             <Card>
-              <CardHeader
-                title="Listening days"
-                subtitle="October 2026"
-              />
+              <CardHeader title="Listening days" subtitle="October 2026" />
 
               <Calendar onSelectDay={setCalendarDay} />
 
@@ -1420,6 +1591,7 @@ export default function StatisticsScreen() {
                   }
                 >
                   <RankRow
+                    index={i}
                     initials={initials}
                     gradient={gradient}
                     title={name}
