@@ -1,10 +1,135 @@
 import { NativeModules, Platform } from "react-native";
 import { updateSong } from "../databases/queries/song.js";
+import { ensureReadableUri, readTagsFromFile } from "./jsTagReader.js";
 
 const { AudioMetadata } = NativeModules;
 
 // Bitrate from MediaMetadataRetriever is in bits/sec; convert to kbps.
 const BITRATE_DIVISOR = 1000;
+const jsMetaCache = new Map();
+let warnedNativeMissing = false;
+
+function warnNativeMissingOnce() {
+  if (warnedNativeMissing) return;
+  warnedNativeMissing = true;
+  console.warn(
+    "AudioMetadata native module not available; using JS metadata fallback",
+  );
+}
+
+function toArtworkDataUri(artwork) {
+  if (!artwork || typeof artwork !== "string") return null;
+  if (artwork.startsWith("data:")) return artwork;
+  return `data:image/jpeg;base64,${artwork}`;
+}
+
+async function extractJsMetadata(contentUri) {
+  if (jsMetaCache.has(contentUri)) {
+    return jsMetaCache.get(contentUri);
+  }
+
+  const pending = (async () => {
+    const merge = (meta) => ({
+      title: meta.title || meta.name,
+      artist: meta.artist,
+      album: meta.album,
+      album_artist: meta.album_artist || meta.albumArtist,
+      year: meta.year,
+      track_number: meta.track_number || meta.track,
+      duration: meta.duration,
+      artwork: toArtworkDataUri(meta.artwork),
+    });
+
+    try {
+      const local = await readTagsFromFile(contentUri);
+      if (local && (local.title || local.artist || local.artwork || local.duration)) {
+        return merge(local);
+      }
+    } catch {
+      // Fall through to the package reader / copied file.
+    }
+
+    try {
+      const { getAudioMetadata } = await import("@missingcore/audio-metadata");
+      const wanted = [
+        "album",
+        "albumArtist",
+        "artist",
+        "artwork",
+        "name",
+        "track",
+        "year",
+      ];
+      let data;
+      const localUri = await ensureReadableUri(contentUri);
+      try {
+        data = await getAudioMetadata(localUri || contentUri, wanted);
+      } catch {
+        const copied = localUri ? await readTagsFromFile(localUri) : null;
+        if (copied && (copied.title || copied.artist || copied.artwork || copied.duration)) {
+          return merge(copied);
+        }
+        data = await getAudioMetadata(contentUri, wanted);
+      }
+      const meta = data?.metadata || {};
+      return merge({
+        title: meta.name,
+        artist: meta.artist,
+        album: meta.album,
+        album_artist: meta.albumArtist,
+        year: meta.year,
+        track_number: meta.track,
+        artwork: meta.artwork,
+      });
+    } catch (error) {
+      console.warn("JS metadata extraction failed:", error);
+      return {};
+    }
+  })();
+
+  jsMetaCache.set(contentUri, pending);
+  return pending;
+}
+
+export async function getDurationSeconds(contentUri, timeoutMs = 2500) {
+  if (!contentUri) return 0;
+  try {
+    const { createAudioPlayer } = await import("expo-audio");
+    const player = createAudioPlayer({ uri: contentUri }, { updateInterval: 80 });
+    try {
+      return await new Promise((resolve) => {
+        let settled = false;
+        const finish = (value) => {
+          if (settled) return;
+          settled = true;
+          resolve(Number.isFinite(value) && value > 0 ? value : 0);
+        };
+        const timer = setTimeout(() => finish(player.duration || 0), timeoutMs);
+        const sub = player.addListener("playbackStatusUpdate", (status) => {
+          const duration = status?.duration ?? player.duration;
+          if (duration > 0) {
+            clearTimeout(timer);
+            try {
+              sub.remove();
+            } catch {
+              // ignore
+            }
+            finish(duration);
+          }
+        });
+      });
+    } finally {
+      try {
+        player.remove();
+      } catch {
+        // ignore
+      }
+    }
+  } catch (error) {
+    console.warn("Duration probe failed:", error);
+    return 0;
+  }
+}
 
 /**
  * Extract text metadata from an audio file via SAF content URI.
@@ -13,21 +138,24 @@ const BITRATE_DIVISOR = 1000;
  */
 export async function getMetadata(contentUri) {
   if (Platform.OS !== "android") {
-    return {};
+    return extractJsMetadata(contentUri);
   }
 
   if (!AudioMetadata) {
-    console.warn("AudioMetadata native module not available - rebuilding dev client required");
-    return {};
+    warnNativeMissingOnce();
+    return extractJsMetadata(contentUri);
   }
 
   try {
     const result = await AudioMetadata.getMetadata(contentUri);
-    return result || {};
+    if (result && Object.keys(result).length > 0) {
+      return result;
+    }
   } catch (error) {
     console.warn("Metadata extraction failed:", error);
-    return {};
   }
+
+  return extractJsMetadata(contentUri);
 }
 
 /**
@@ -35,21 +163,19 @@ export async function getMetadata(contentUri) {
  * Returns null when the file has no embedded picture.
  */
 export async function getArtwork(contentUri) {
-  if (Platform.OS !== "android") {
-    return null;
+  if (AudioMetadata && Platform.OS === "android") {
+    try {
+      const nativeArt = await AudioMetadata.getArtwork(contentUri);
+      if (nativeArt) return nativeArt;
+    } catch (error) {
+      console.warn("Artwork extraction failed:", error);
+    }
+  } else if (Platform.OS === "android") {
+    warnNativeMissingOnce();
   }
 
-  if (!AudioMetadata) {
-    console.warn("AudioMetadata native module not available - rebuilding dev client required");
-    return null;
-  }
-
-  try {
-    return await AudioMetadata.getArtwork(contentUri);
-  } catch (error) {
-    console.warn("Artwork extraction failed:", error);
-    return null;
-  }
+  const jsMeta = await extractJsMetadata(contentUri);
+  return jsMeta?.artwork || null;
 }
 
 /**
@@ -62,7 +188,7 @@ export async function getAudioProperties(contentUri) {
   }
 
   if (!AudioMetadata) {
-    console.warn("AudioMetadata native module not available - rebuilding dev client required");
+    warnNativeMissingOnce();
     return {};
   }
 

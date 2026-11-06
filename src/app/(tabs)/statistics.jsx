@@ -18,6 +18,7 @@ import {
 import Animated, {
   Easing,
   FadeIn,
+  FadeInDown,
   LinearTransition,
   useAnimatedProps,
   useAnimatedStyle,
@@ -26,9 +27,7 @@ import Animated, {
   withRepeat,
   withSpring,
   withTiming,
-  FadeInDown,
 } from "react-native-reanimated";
-
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, useIsFocused } from "expo-router";
@@ -519,6 +518,7 @@ function GradBar({ id, pct, from = VI, to = TL, height = 6 }) {
 
 const TIP_W = 104;
 
+
 function AreaChart({
   id,
   series, // [{ v, c, o, w, dash, name? }]
@@ -526,6 +526,7 @@ function AreaChart({
   height = 200,
   axis = false,
   max,
+  compact = false, // sparkline mode: no scrubbing, tooltip, pulse or glow
 }) {
   const [W, onLayout] = useWidth();
   const [sel, setSel] = useState(null);
@@ -559,14 +560,15 @@ function AreaChart({
     });
   }, [dataKey, ready, reveal]);
 
-  // gentle pulse on the latest point
+  // gentle pulse on the latest point (skipped for sparklines)
   useEffect(() => {
+    if (compact) return;
     pulse.value = withRepeat(
       withTiming(1, { duration: 1800, easing: Easing.out(Easing.quad) }),
       -1,
       false,
     );
-  }, [pulse]);
+  }, [pulse, compact]);
 
   const clipProps = useAnimatedProps(() => ({
     width: Math.max(0.01, W * reveal.value),
@@ -722,7 +724,7 @@ function AreaChart({
                         fill={`url(#${id}${k})`}
                       />
                       {/* soft glow under the main line */}
-                      {k === 0 ? (
+                      {k === 0 && !compact ? (
                         <Path
                           d={d}
                           fill="none"
@@ -748,19 +750,21 @@ function AreaChart({
             {/* latest point: pulsing while idle, hidden while scrubbing */}
             {sel === null ? (
               <>
+                {!compact ? (
+                  <AnimatedCircle
+                    cx={x(n - 1)}
+                    cy={y(series[0].v[n - 1])}
+                    fill={PK}
+                    animatedProps={pulseProps}
+                  />
+                ) : null}
                 <AnimatedCircle
                   cx={x(n - 1)}
                   cy={y(series[0].v[n - 1])}
-                  fill={PK}
-                  animatedProps={pulseProps}
-                />
-                <AnimatedCircle
-                  cx={x(n - 1)}
-                  cy={y(series[0].v[n - 1])}
-                  r={4.5}
+                  r={compact ? 3.5 : 4.5}
                   fill={PK}
                   stroke="#13121a"
-                  strokeWidth={2}
+                  strokeWidth={compact ? 1.5 : 2}
                   animatedProps={dotProps}
                 />
               </>
@@ -781,7 +785,7 @@ function AreaChart({
         )}
 
         {/* floating readout that follows your finger */}
-        {ready && sel !== null ? (
+        {!compact && ready && sel !== null ? (
           <View
             pointerEvents="none"
             style={{
@@ -840,21 +844,54 @@ function AreaChart({
         ) : null}
 
         {/* touch layer: tap or drag across the chart to scrub */}
-        <View
-          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
-          onStartShouldSetResponder={() => true}
-          onMoveShouldSetResponder={() => true}
-          onResponderGrant={(e) => pick(e.nativeEvent.locationX)}
-          onResponderMove={(e) => pick(e.nativeEvent.locationX)}
-          onResponderRelease={release}
-          onResponderTerminate={release}
-        />
+        {!compact ? (
+          <View
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+            }}
+            onStartShouldSetResponder={() => true}
+            onMoveShouldSetResponder={() => true}
+            onResponderGrant={(e) => pick(e.nativeEvent.locationX)}
+            onResponderMove={(e) => pick(e.nativeEvent.locationX)}
+            onResponderRelease={release}
+            onResponderTerminate={release}
+          />
+        ) : null}
       </View>
     </View>
   );
 }
 
 /* ───────────── small bar chart (tap a bar) ───────────── */
+
+function MiniBar({ x, w, bh, base, fill, opacity, delay }) {
+  const h = useSharedValue(0);
+
+  // grows from the baseline on mount, springs when values change
+  useEffect(() => {
+    h.value = withDelay(delay, withSpring(bh, { damping: 16, stiffness: 140 }));
+  }, [bh, delay, h]);
+
+  const animatedProps = useAnimatedProps(() => ({
+    y: base - h.value,
+    height: Math.max(0.01, h.value),
+  }));
+
+  return (
+    <AnimatedRect
+      x={x}
+      width={w}
+      rx={Math.min(5, w / 2)}
+      fill={fill}
+      opacity={opacity}
+      animatedProps={animatedProps}
+    />
+  );
+}
 
 function MiniBars({ values, labels, selected, onSelect, height = 74 }) {
   const [W, onLayout] = useWidth();
@@ -870,31 +907,67 @@ function MiniBars({ values, labels, selected, onSelect, height = 74 }) {
     <View onLayout={onLayout} style={{ width: "100%", height }}>
       {W > 0 && (
         <Svg width={W} height={height}>
+          <Defs>
+            <SvgGradient id="mbGr" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={GR} stopOpacity="1" />
+              <Stop offset="1" stopColor={GR} stopOpacity="0.45" />
+            </SvgGradient>
+            <SvgGradient id="mbPk" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={PK} stopOpacity="1" />
+              <Stop offset="1" stopColor={PK} stopOpacity="0.55" />
+            </SvgGradient>
+          </Defs>
+
+          {/* baseline */}
+          <Rect
+            x={0}
+            y={base + 0.5}
+            width={W}
+            height={1}
+            fill="rgba(255,255,255,0.08)"
+          />
+
           {values.map((v, i) => {
             const bh = 8 + (v / mx) * (base - top - 8);
             const cx = slot * i + slot / 2;
             const on = selected === i;
+            const dim = selected >= 0 && !on;
 
             return (
               <React.Fragment key={i}>
-                <Rect
+                {/* highlight column behind the selected bar */}
+                {on ? (
+                  <Rect
+                    x={slot * i + 1}
+                    y={top - 4}
+                    width={slot - 2}
+                    height={height - top + 2}
+                    rx={8}
+                    fill="rgba(236,111,142,0.1)"
+                  />
+                ) : null}
+
+                <MiniBar
                   x={cx - bw / 2}
-                  y={base - bh}
-                  width={bw}
-                  height={bh}
-                  rx={4}
-                  fill={on ? PK : GR}
-                  opacity={on ? 1 : 0.85}
+                  w={bw}
+                  bh={bh}
+                  base={base}
+                  delay={i * 45}
+                  fill={on ? "url(#mbPk)" : "url(#mbGr)"}
+                  opacity={on ? 1 : dim ? 0.5 : 0.85}
                 />
+
                 <SvgText
                   x={cx}
                   y={height - 2}
                   textAnchor="middle"
-                  fill="#9d9da8"
+                  fill={on ? "#f2f2f5" : "#9d9da8"}
                   fontSize={9}
+                  fontWeight={on ? "700" : "500"}
                 >
                   {labels[i]}
                 </SvgText>
+
                 {/* full-height hit area */}
                 <Rect
                   x={slot * i}
@@ -902,7 +975,10 @@ function MiniBars({ values, labels, selected, onSelect, height = 74 }) {
                   width={slot}
                   height={height}
                   fill="transparent"
-                  onPress={() => onSelect(on ? -1 : i)}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    onSelect(on ? -1 : i);
+                  }}
                 />
               </React.Fragment>
             );
@@ -1357,7 +1433,6 @@ function GenreRow({
   max = 100,
   index = 0,
 }) {
-  const scale = useSharedValue(1);
   const act = useSharedValue(active ? 1 : 0);
   const fill = useSharedValue(0);
 
@@ -1375,247 +1450,313 @@ function GenreRow({
     );
   }, [pct, max, index, fill]);
 
-  const pressStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-  const tintStyle = useAnimatedStyle(() => ({ opacity: 0.1 * act.value }));
-  const ringStyle = useAnimatedStyle(() => ({ opacity: 0.6 * act.value }));
-  const barStyle = useAnimatedStyle(() => ({ width: `${fill.value}%` }));
-
   return (
     <Animated.View
       entering={FadeInDown.delay(index * 50).duration(350)}
       style={{ marginBottom: 8 }}
     >
-      <Animated.View style={pressStyle}>
-        <Pressable
-          onPressIn={() => {
-            // eslint-disable-next-line react-hooks/immutability
-            scale.value = withSpring(0.97, { damping: 15, stiffness: 300 });
-          }}
-          onPressOut={() => {
-            // eslint-disable-next-line react-hooks/immutability
-            scale.value = withSpring(1, { damping: 12, stiffness: 260 });
-          }}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            onPress();
-          }}
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.7}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+          paddingVertical: 6,
+          paddingHorizontal: 8,
+          borderRadius: 12,
+          backgroundColor: active ? "rgba(236,111,142,0.08)" : "transparent",
+        }}
+      >
+        <View
           style={{
-            overflow: "hidden",
-            borderRadius: 16,
-            borderWidth: 1,
-            borderColor: "#23212c",
-            backgroundColor: "#0f0e15",
+            height: 10,
+            width: 10,
+            borderRadius: 5,
+            backgroundColor: color,
+          }}
+        />
+        <Text
+          textTransform="capitalize"
+          className="flex-1 text-xs text-[#f2f2f5]"
+          style={{ fontFamily: MONO }}
+        >
+          {label}
+        </Text>
+        <Text
+          textTransform="capitalize"
+          className="text-xs text-[#9d9da8]"
+          style={{ fontFamily: MONO }}
+        >
+          {plays}
+        </Text>
+        <Text
+          textTransform="capitalize"
+          className="text-xs font-bold"
+          style={{
+            fontFamily: MONO,
+            color: "#22d3ee",
+            minWidth: 48,
+            textAlign: "right",
           }}
         >
-          {/* active tint + colored ring (work with any color format) */}
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              {
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                backgroundColor: color,
-              },
-              tintStyle,
-            ]}
-          />
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              {
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                borderRadius: 15,
-                borderWidth: 1,
-                borderColor: color,
-              },
-              ringStyle,
-            ]}
-          />
-
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 12,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-            }}
-          >
-            {/* color chip */}
-            <View
-              style={{
-                height: 32,
-                width: 32,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <View
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  borderRadius: 10,
-                  backgroundColor: color,
-                  opacity: 0.18,
-                }}
-              />
-              <View
-                style={{
-                  height: 10,
-                  width: 10,
-                  borderRadius: 5,
-                  backgroundColor: color,
-                  shadowColor: color,
-                  shadowOpacity: 0.9,
-                  shadowRadius: 6,
-                  shadowOffset: { width: 0, height: 0 },
-                  elevation: 3,
-                }}
-              />
-            </View>
-
-            {/* label + share bar */}
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text
-                textTransform="capitalize"
-                numberOfLines={1}
-                className="text-xs font-semibold text-[#f2f2f5]"
-                style={{ fontFamily: MONO }}
-              >
-                {label}
-              </Text>
-              <View
-                style={{
-                  marginTop: 7,
-                  height: 4,
-                  borderRadius: 999,
-                  backgroundColor: "#242230",
-                  overflow: "hidden",
-                }}
-              >
-                <Animated.View
-                  style={[
-                    {
-                      height: "100%",
-                      borderRadius: 999,
-                      backgroundColor: color,
-                    },
-                    barStyle,
-                  ]}
-                />
-              </View>
-            </View>
-
-            {/* numbers */}
-            <View style={{ alignItems: "flex-end", minWidth: 52 }}>
-              <Text
-                textTransform="capitalize"
-                className="text-sm font-bold"
-                style={{
-                  fontFamily: MONO,
-                  color: "#22d3ee",
-                  fontVariant: ["tabular-nums"],
-                }}
-              >
-                {pct.toFixed(1)}%
-              </Text>
-              <Text
-                textTransform="capitalize"
-                className="mt-0.5 text-[11px] text-[#9d9da8]"
-                style={{ fontFamily: MONO, fontVariant: ["tabular-nums"] }}
-              >
-                {plays}
-              </Text>
-            </View>
-          </View>
-        </Pressable>
-      </Animated.View>
+          {pct.toFixed(1)}%
+        </Text>
+      </TouchableOpacity>
     </Animated.View>
   );
 }
 
 /* ───────────── mini metric card (2-column grid) ───────────── */
 
-function MiniCard({ icon, title, subtitle, value, note, variant, children }) {
+const MINI_ACCENT = {
+  pos: "#34d399",
+  info: "#22d3ee",
+  neg: "#fb7185",
+  pur: "#a78bfa",
+};
+
+function MiniCard({
+  icon,
+  title,
+  subtitle,
+  value,
+  note,
+  variant,
+  children,
+  delay = 0,
+}) {
+  const accent = MINI_ACCENT[variant] ?? "#e49f33";
+  const scale = useSharedValue(1);
+  const pressStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
   return (
-    <View
-      className="overflow-hidden rounded-3xl border border-[#23212c] bg-[#13121a]"
-      style={{ width: "48.5%", padding: 14 }}
+    <Animated.View
+      entering={FadeInDown.delay(delay).duration(450).springify().damping(16)}
+      style={[{ width: "48.5%" }, pressStyle]}
     >
-      <IconBadge name={icon} />
-
-      <Text
-        textTransform="capitalize"
-        className="text-[11px] font-semibold uppercase text-[#f2f2f5]"
-        style={{ letterSpacing: 1.8 }}
-        numberOfLines={1}
-      >
-        {title}
-      </Text>
-      <Text
-        textTransform="capitalize"
-        className="mt-1 text-xs text-[#9d9da8]"
-        numberOfLines={1}
-      >
-        {subtitle}
-      </Text>
-
-      <Text
-        textTransform="capitalize"
-        className="mt-3 text-lg font-bold text-[#f2f2f5]"
-        style={{ fontFamily: MONO, fontVariant: ["tabular-nums"] }}
-        numberOfLines={1}
-      >
-        {value}
-      </Text>
-      <Pill text={note} variant={variant} />
-
-      <View style={{ marginTop: 10 }}>{children}</View>
-    </View>
-  );
-}
-
-function QualityRow({ id, label, pct }) {
-  return (
-    <View style={{ marginBottom: 8 }}>
-      <View
+      <Pressable
+        onPressIn={() => {
+          scale.value = withSpring(0.97, { damping: 15, stiffness: 300 });
+        }}
+        onPressOut={() => {
+          scale.value = withSpring(1, { damping: 12, stiffness: 260 });
+        }}
+        onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
         style={{
-          flexDirection: "row",
-          justifyContent: "space-between",
-          marginBottom: 4,
+          flex: 1,
+          overflow: "hidden",
+          borderRadius: 24,
+          borderWidth: 1,
+          borderColor: "#23212c",
+          backgroundColor: "#13121a",
+          padding: 14,
         }}
       >
-        <Text textTransform="capitalize" className="text-[11px] text-[#9d9da8]">
-          {label}
+        {/* soft top highlight line in the tile's accent */}
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 20,
+            right: 20,
+            height: 1,
+            backgroundColor: accent,
+            opacity: 0.4,
+          }}
+        />
+
+        {/* corner glow */}
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: -40,
+            right: -40,
+            height: 110,
+            width: 110,
+            borderRadius: 55,
+            backgroundColor: accent,
+            opacity: 0.09,
+          }}
+        />
+
+        {/* icon chip */}
+        <View
+          style={{
+            height: 32,
+            width: 32,
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: 10,
+            borderRadius: 10,
+            backgroundColor: `${accent}22`,
+            borderWidth: 1,
+            borderColor: `${accent}33`,
+          }}
+        >
+          <Ionicons name={icon} size={16} color={accent} />
+        </View>
+
+        <Text
+          textTransform="capitalize"
+          className="text-[11px] font-semibold uppercase text-[#f2f2f5]"
+          style={{ letterSpacing: 1.8 }}
+          numberOfLines={1}
+        >
+          {title}
         </Text>
         <Text
           textTransform="capitalize"
-          className="text-[11px] font-bold"
-          style={{ color: "#a78bfa" }}
+          className="mt-1 text-xs text-[#9d9da8]"
+          numberOfLines={1}
         >
-          {pct}%
+          {subtitle}
         </Text>
+
+        <Text
+          textTransform="capitalize"
+          className="mt-3 text-xl font-bold text-[#f2f2f5]"
+          style={{ fontFamily: MONO, fontVariant: ["tabular-nums"] }}
+          numberOfLines={1}
+        >
+          {value}
+        </Text>
+        <Pill text={note} variant={variant} />
+
+        <View style={{ marginTop: 12 }}>{children}</View>
+      </Pressable>
+    </Animated.View>
+  );
+}
+function QualityRow({ id, label, pct, index = 0 }) {
+  return (
+    <Animated.View
+      entering={FadeInDown.delay(index * 80).duration(350)}
+      style={{ marginBottom: 10 }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 5,
+        }}
+      >
+        <Text
+          textTransform="capitalize"
+          numberOfLines={1}
+          className="flex-1 pr-2 text-[11px] font-medium text-[#9d9da8]"
+        >
+          {label}
+        </Text>
+
+        <View
+          style={{
+            paddingHorizontal: 6,
+            paddingVertical: 1,
+            borderRadius: 999,
+            backgroundColor: "rgba(167,139,250,0.14)",
+          }}
+        >
+          <Text
+            textTransform="capitalize"
+            className="text-[11px] font-bold"
+            style={{ color: "#a78bfa", fontVariant: ["tabular-nums"] }}
+          >
+            {pct}%
+          </Text>
+        </View>
       </View>
+
       <GradBar id={id} pct={pct} />
-    </View>
+    </Animated.View>
   );
 }
 
 /* ───────────── calendar ───────────── */
 
 const CELL = `${100 / 7}%`;
+
+function DayCell({ d, alpha, minutes, future, today, selected, onPress }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      style={{
+        width: CELL,
+        aspectRatio: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: future ? 0.25 : 1,
+      }}
+    >
+      <View
+        style={{
+          width: "82%",
+          aspectRatio: 1,
+          borderRadius: 8,
+          backgroundColor: today
+            ? "rgba(236,111,142,0.35)"
+            : selected
+              ? "rgba(228,159,51,0.35)"
+              : `rgba(228,159,51,${alpha})`,
+          borderWidth: today ? 1.5 : 0,
+          borderColor: today ? "#ec6f8e" : "transparent",
+        }}
+      >
+        <Text
+          textTransform="capitalize"
+          className="text-center text-xs"
+          style={{
+            color: today || selected ? "#2a1500" : "#9d9da8",
+            fontWeight: today ? "700" : "500",
+          }}
+        >
+          {d}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function CalendarLegend() {
+  return (
+    <View
+      style={{ flexDirection: "row", gap: 14, marginTop: 10, flexWrap: "wrap" }}
+    >
+      {[
+        ["Today", "#ec6f8e"],
+        ["Selected", "#e49f33"],
+        ["Listened", "#e49f33"],
+        ["Quiet", "#2a2838"],
+      ].map(([label, color]) => (
+        <View
+          key={label}
+          style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+        >
+          <View
+            style={{
+              height: 8,
+              width: 8,
+              borderRadius: 4,
+              backgroundColor: color,
+            }}
+          />
+          <Text
+            textTransform="capitalize"
+            className="text-[10px] text-[#9d9da8]"
+          >
+            {label}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 function Calendar({ onSelectDay, selectedDay }) {
   const offset = (new Date(2026, 9, 1).getDay() + 6) % 7;
@@ -1914,136 +2055,6 @@ function RankRow({
 }
 /* ───────────── habit tile ───────────── */
 
-function DayCell({ d, alpha, minutes, future, today, selected, onPress }) {
-  const scale = useSharedValue(selected ? 1.08 : 1);
-  const lit = alpha > 0.55;
-
-  useEffect(() => {
-    scale.value = withSpring(selected ? 1.08 : 1, {
-      damping: 12,
-      stiffness: 240,
-    });
-  }, [selected, scale]);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  return (
-    <Animated.View
-      entering={FadeIn.delay(d * 14).duration(300)}
-      style={{ width: CELL, aspectRatio: 1, padding: 3 }}
-    >
-      <Pressable
-        onPressIn={() => {
-          // eslint-disable-next-line react-hooks/immutability
-          scale.value = withSpring(0.9, { damping: 15, stiffness: 300 });
-        }}
-        onPressOut={() => {
-          // eslint-disable-next-line react-hooks/immutability
-          scale.value = withSpring(selected ? 1.08 : 1, {
-            damping: 12,
-            stiffness: 260,
-          });
-        }}
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          onPress();
-        }}
-        style={{ flex: 1 }}
-      >
-        <Animated.View
-          style={[
-            {
-              flex: 1,
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 12,
-              opacity: future ? 0.35 : 1,
-              borderWidth: selected ? 1.5 : today ? 1.5 : 1,
-              borderColor: selected
-                ? "#f6c36a"
-                : today
-                  ? "#ffffff"
-                  : minutes
-                    ? "rgba(228,159,51,0.18)"
-                    : "rgba(255,255,255,0.05)",
-              backgroundColor: minutes
-                ? `rgba(228,159,51,${alpha})`
-                : "rgba(255,255,255,0.03)",
-              ...(selected
-                ? {
-                    shadowColor: "#e49f33",
-                    shadowOpacity: 0.75,
-                    shadowRadius: 8,
-                    shadowOffset: { width: 0, height: 0 },
-                    elevation: 6,
-                  }
-                : null),
-            },
-            animStyle,
-          ]}
-        >
-          <Text
-            textTransform="capitalize"
-            className="text-sm font-semibold"
-            style={{
-              color: lit ? "#0b0b0e" : "#f4f4f6",
-              fontVariant: ["tabular-nums"],
-            }}
-          >
-            {d}
-          </Text>
-
-          {/* today marker */}
-          {today ? (
-            <View
-              style={{
-                position: "absolute",
-                bottom: 4,
-                height: 4,
-                width: 4,
-                borderRadius: 2,
-                backgroundColor: lit ? "#0b0b0e" : "#e49f33",
-              }}
-            />
-          ) : null}
-        </Animated.View>
-      </Pressable>
-    </Animated.View>
-  );
-}
-
-function CalendarLegend() {
-  return (
-    <View
-      style={{
-        marginTop: 8,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "flex-end",
-        gap: 6,
-      }}
-    >
-      <Text className="text-xs text-[#9d9da8]">Less</Text>
-      {[0, 0.25, 0.5, 0.75, 1].map((a) => (
-        <View
-          key={a}
-          style={{
-            height: 12,
-            width: 12,
-            borderRadius: 4,
-            backgroundColor: a
-              ? `rgba(228,159,51,${0.2 + 0.8 * a})`
-              : "rgba(255,255,255,0.06)",
-          }}
-        />
-      ))}
-      <Text className="text-xs text-[#9d9da8]">More</Text>
-    </View>
-  );
-}
-
 function HabitTile({ label, value, note, valueClass = "text-xl" }) {
   return (
     <View
@@ -2333,6 +2344,7 @@ export default function StatisticsScreen() {
               }}
             >
               <MiniCard
+                delay={0}
                 icon="sparkles-outline"
                 title="Discoveries"
                 subtitle="New songs / week"
@@ -2342,6 +2354,7 @@ export default function StatisticsScreen() {
               >
                 <AreaChart
                   id="ds"
+                  compact
                   height={56}
                   max={13}
                   series={[{ v: DISCOVERIES, c: TL, o: 0.25, w: 2 }]}
@@ -2349,6 +2362,7 @@ export default function StatisticsScreen() {
               </MiniCard>
 
               <MiniCard
+                delay={70}
                 icon="bar-chart-outline"
                 title="Daily hours"
                 subtitle="Tap a bar"
@@ -2365,6 +2379,7 @@ export default function StatisticsScreen() {
               </MiniCard>
 
               <MiniCard
+                delay={140}
                 icon="play-skip-forward-outline"
                 title="Skips"
                 subtitle="Skipped early"
@@ -2374,6 +2389,7 @@ export default function StatisticsScreen() {
               >
                 <AreaChart
                   id="sk"
+                  compact
                   height={56}
                   max={18}
                   series={[{ v: SKIPS, c: "#fb7185", o: 0.3, w: 1.8 }]}
@@ -2381,6 +2397,7 @@ export default function StatisticsScreen() {
               </MiniCard>
 
               <MiniCard
+                delay={210}
                 icon="musical-notes-outline"
                 title="Audio quality"
                 subtitle="Stream mix"
@@ -2388,9 +2405,24 @@ export default function StatisticsScreen() {
                 note="High+"
                 variant="pur"
               >
-                <QualityRow id="q0" label={AUD[0][0]} pct={AUD[0][1]} />
-                <QualityRow id="q1" label={AUD[1][0]} pct={AUD[1][1]} />
-                <QualityRow id="q2" label={AUD[2][0]} pct={AUD[2][1]} />
+                <QualityRow
+                  index={0}
+                  id="q0"
+                  label={AUD[0][0]}
+                  pct={AUD[0][1]}
+                />
+                <QualityRow
+                  index={1}
+                  id="q1"
+                  label={AUD[1][0]}
+                  pct={AUD[1][1]}
+                />
+                <QualityRow
+                  index={2}
+                  id="q2"
+                  label={AUD[2][0]}
+                  pct={AUD[2][1]}
+                />
               </MiniCard>
             </View>
 

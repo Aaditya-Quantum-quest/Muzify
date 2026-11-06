@@ -1,6 +1,7 @@
 import * as FileSystem from "expo-file-system/legacy";
 import { Platform } from "react-native";
 import { getArtwork } from "./audioMetadata";
+import { findFolderCover, readJsArtwork } from "./jsTagReader";
 
 /**
  * Artwork cache directory - uses app's cache directory which persists across restarts.
@@ -52,23 +53,44 @@ export async function getCachedArtwork(contentUri) {
     return localUri;
   }
 
-  // Extract artwork from the audio file
-  const dataUri = await getArtwork(contentUri);
-  if (!dataUri) {
-    return null;
-  }
-
-  try {
-    // Convert base64 data URI to a file
-    const base64 = dataUri.replace(/^data:image\/[a-z]+;base64,/, "");
+  const writeDataUri = async (dataUri) => {
+    const base64 = dataUri.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "");
     await FileSystem.writeAsStringAsync(localUri, base64, {
       encoding: FileSystem.EncodingType.Base64,
     });
     return localUri;
-  } catch (error) {
-    console.warn("Failed to cache artwork:", error);
-    return null;
+  };
+
+  const dataUri = await getArtwork(contentUri);
+  if (dataUri) {
+    try {
+      return await writeDataUri(dataUri);
+    } catch (error) {
+      console.warn("Failed to cache artwork:", error);
+    }
   }
+
+  const folderCover = await findFolderCover(contentUri);
+  if (folderCover) {
+    try {
+      await FileSystem.copyAsync({ from: folderCover, to: localUri });
+      const copied = await FileSystem.getInfoAsync(localUri);
+      if (copied.exists) return localUri;
+    } catch (error) {
+      console.warn("Failed to cache folder cover:", error);
+    }
+  }
+
+  const jsArt = await readJsArtwork(contentUri);
+  if (jsArt) {
+    try {
+      return await writeDataUri(jsArt);
+    } catch (error) {
+      console.warn("Failed to cache JS artwork:", error);
+    }
+  }
+
+  return null;
 }
 
 /**
