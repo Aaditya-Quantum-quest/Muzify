@@ -1,8 +1,6 @@
 import { NativeModules, Platform } from "react-native";
-import * as FileSystem from "expo-file-system/legacy";
 import { updateSong } from "../databases/queries/song.js";
-import { getFilenameFromUri } from "./folderScanner.js";
-import { readTagsFromFile } from "./jsTagReader.js";
+import { ensureReadableUri, readTagsFromFile } from "./jsTagReader.js";
 
 const { AudioMetadata } = NativeModules;
 
@@ -23,33 +21,6 @@ function toArtworkDataUri(artwork) {
   if (!artwork || typeof artwork !== "string") return null;
   if (artwork.startsWith("data:")) return artwork;
   return `data:image/jpeg;base64,${artwork}`;
-}
-
-function hashUri(value) {
-  let hash = 0;
-  for (let i = 0; i < value.length; i += 1) {
-    hash = (hash << 5) - hash + value.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(16);
-}
-
-async function copySafToCache(contentUri) {
-  const filename = getFilenameFromUri(contentUri) || "audio.m4a";
-  const ext = filename.split(".").pop()?.toLowerCase() || "m4a";
-  const dir = `${FileSystem.cacheDirectory}meta/`;
-  const dest = `${dir}${hashUri(contentUri)}.${ext}`;
-
-  const dirInfo = await FileSystem.getInfoAsync(dir);
-  if (!dirInfo.exists) {
-    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-  }
-
-  const destInfo = await FileSystem.getInfoAsync(dest);
-  if (destInfo.exists) return dest;
-
-  await FileSystem.copyAsync({ from: contentUri, to: dest });
-  return dest;
 }
 
 async function extractJsMetadata(contentUri) {
@@ -90,15 +61,15 @@ async function extractJsMetadata(contentUri) {
         "year",
       ];
       let data;
+      const localUri = await ensureReadableUri(contentUri);
       try {
-        data = await getAudioMetadata(contentUri, wanted);
+        data = await getAudioMetadata(localUri || contentUri, wanted);
       } catch {
-        const localUri = await copySafToCache(contentUri);
-        const copied = await readTagsFromFile(localUri);
+        const copied = localUri ? await readTagsFromFile(localUri) : null;
         if (copied && (copied.title || copied.artist || copied.artwork || copied.duration)) {
           return merge(copied);
         }
-        data = await getAudioMetadata(localUri, wanted);
+        data = await getAudioMetadata(contentUri, wanted);
       }
       const meta = data?.metadata || {};
       return merge({

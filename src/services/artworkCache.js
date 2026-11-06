@@ -1,6 +1,7 @@
 import * as FileSystem from "expo-file-system/legacy";
 import { Platform } from "react-native";
 import { getArtwork } from "./audioMetadata";
+import { findFolderCover, readJsArtwork } from "./jsTagReader";
 
 /**
  * Artwork cache directory - uses app's cache directory which persists across restarts.
@@ -52,53 +53,44 @@ export async function getCachedArtwork(contentUri) {
     return localUri;
   }
 
+  const writeDataUri = async (dataUri) => {
+    const base64 = dataUri.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "");
+    await FileSystem.writeAsStringAsync(localUri, base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return localUri;
+  };
+
   const dataUri = await getArtwork(contentUri);
   if (dataUri) {
     try {
-      const base64 = dataUri.replace(/^data:image\/[a-z]+;base64,/, "");
-      await FileSystem.writeAsStringAsync(localUri, base64, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      return localUri;
+      return await writeDataUri(dataUri);
     } catch (error) {
       console.warn("Failed to cache artwork:", error);
     }
   }
 
-  const folderCover = await findFolderCover(contentUri, localUri);
-  if (folderCover) return folderCover;
+  const folderCover = await findFolderCover(contentUri);
+  if (folderCover) {
+    try {
+      await FileSystem.copyAsync({ from: folderCover, to: localUri });
+      const copied = await FileSystem.getInfoAsync(localUri);
+      if (copied.exists) return localUri;
+    } catch (error) {
+      console.warn("Failed to cache folder cover:", error);
+    }
+  }
+
+  const jsArt = await readJsArtwork(contentUri);
+  if (jsArt) {
+    try {
+      return await writeDataUri(jsArt);
+    } catch (error) {
+      console.warn("Failed to cache JS artwork:", error);
+    }
+  }
 
   return null;
-}
-
-const COVER_NAME = /(?:^|\/)(cover|folder|album|albumart|artwork|front)\.(jpe?g|png|webp|bmp)$/i;
-
-async function findFolderCover(contentUri, destUri) {
-  const parentUri = String(contentUri).replace(/\/[^/]*$/, "");
-  if (!parentUri || parentUri === contentUri) return null;
-
-  let entries = [];
-  try {
-    entries = await FileSystem.StorageAccessFramework.readDirectoryAsync(parentUri);
-  } catch {
-    return null;
-  }
-
-  const coverUri = entries.find((entry) => {
-    try {
-      return COVER_NAME.test(decodeURIComponent(entry));
-    } catch {
-      return COVER_NAME.test(entry);
-    }
-  });
-  if (!coverUri) return null;
-
-  try {
-    await FileSystem.copyAsync({ from: coverUri, to: destUri });
-    return destUri;
-  } catch {
-    return coverUri;
-  }
 }
 
 /**

@@ -1,6 +1,7 @@
 import { addSong, getAllSongs, updateSong } from "../databases/queries/song.js";
 import { getMetadata, getAudioProperties, getDurationSeconds } from "./audioMetadata";
 import { getCachedArtwork } from "./artworkCache";
+import { readJsTags, resetFolderCoverIndex } from "./jsTagReader";
 import { cleanSongTitle, getFilenameFromUri, looksLikeUri, parseMetadataFromFilename } from "./folderScanner.js";
 import * as FileSystem from "expo-file-system/legacy";
 import * as MediaLibrary from "expo-media-library/legacy";
@@ -41,8 +42,49 @@ function normalizeMetadata(raw, fileUri) {
     genre: raw?.genre?.trim() || "Unknown",
     year: parseYear(raw?.year),
     track_number: raw?.track_number ?? 0,
-    duration: Math.max(0, Math.round((raw?.duration ?? 0) / 1000)), // ms to seconds
+    duration: toDurationSeconds(raw?.duration),
   };
+}
+
+function toDurationSeconds(rawDuration) {
+  const n = Number(rawDuration) || 0;
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  if (n > 10000) return Math.round(n / 1000);
+  return Math.round(n);
+}
+
+function mergeMetadata(primary, fallback) {
+  const a = primary || {};
+  const b = fallback || {};
+  const out = { ...b, ...a };
+  for (const key of [
+    "title",
+    "artist",
+    "album",
+    "album_artist",
+    "composer",
+    "genre",
+    "year",
+    "track_number",
+    "duration",
+  ]) {
+    const value = a[key];
+    const empty = value == null || value === "" || value === 0;
+    if (empty && b[key]) out[key] = b[key];
+  }
+  return out;
+}
+
+async function readMergedMetadata(fileUri) {
+  const native = (await getMetadata(fileUri)) || {};
+  const nativeThin =
+    Object.keys(native).length === 0 ||
+    !native.duration ||
+    !native.artist ||
+    !native.title;
+  if (!nativeThin) return native;
+  const js = await readJsTags(fileUri);
+  return mergeMetadata(native, js);
 }
 
 function parseYear(yearValue) {
@@ -96,17 +138,13 @@ function resolveAudioFormat(mimeType, fileUri) {
  * Falls back to filename parsing when embedded metadata is missing.
  */
 export async function buildSongFromUri(fileUri) {
-  // Extract metadata from the audio file
-  const raw = await getMetadata(fileUri);
-
-  // Normalize with fallbacks
+  const raw = await readMergedMetadata(fileUri);
   const meta = normalizeMetadata(raw, fileUri);
   if (!meta.duration) {
     const probed = await getDurationSeconds(fileUri);
     if (probed > 0) meta.duration = Math.round(probed);
   }
 
-  // Extract and cache artwork
   const artworkUri = await getCachedArtwork(fileUri);
 
   // Extract raw audio stream properties (bitrate, sample rate, channels, mime).
@@ -222,8 +260,8 @@ async function updateExistingSong(existingSong, fileUri) {
   const updates = {};
   let hasUpdates = false;
 
-  const raw = await getMetadata(fileUri);
-  const meta = normalizeMetadata(raw || {}, fileUri);
+  const raw = await readMergedMetadata(fileUri);
+  const meta = normalizeMetadata(raw, fileUri);
   if (!meta.duration) {
     const probed = await getDurationSeconds(fileUri);
     if (probed > 0) meta.duration = Math.round(probed);
@@ -308,10 +346,13 @@ async function updateExistingSong(existingSong, fileUri) {
     }
   }
 
-  // Update duration if placeholder (180) or missing
   if (!existingSong.duration || existingSong.duration === 180 || existingSong.duration <= 0) {
-    if (meta.duration > 0) {
-      updates.duration = meta.duration;
+    let duration = meta.duration;
+    if (!duration || duration <= 0) {
+      duration = await getDurationSeconds(fileUri);
+    }
+    if (duration > 0) {
+      updates.duration = duration;
       hasUpdates = true;
     }
   }
@@ -372,6 +413,7 @@ export const importMusicFromSavedFolder = async () => {
   }
 
   const audioFiles = await scanSelectedFolder(savedFolder.uri);
+  resetFolderCoverIndex();
   return importAudioFiles(audioFiles);
 }
 
@@ -453,20 +495,20 @@ export async function repairLibraryMetadata() {
       if (!songs || songs.length === 0) return { repaired: 0 };
 
       // Check if any songs need repair
-      const candidates = songs.filter(
-        (s) =>
-          !s.title ||
-          looksLikeUri(s.title) ||
-          !s.artist ||
-          s.artist === "Unknown Artist" ||
-          s.artist === "Unknown" ||
-          !s.album ||
-          s.album === "Unknown Album" ||
-          s.album === "Unknown" ||
-          !s.duration ||
-          s.duration <= 0 ||
-          !s.artwork_uri
-      );
+      const needsRepair = (s) =>
+        !s.title ||
+        looksLikeUri(s.title) ||
+        !s.artist ||
+        s.artist === "Unknown Artist" ||
+        s.artist === "Unknown" ||
+        !s.album ||
+        s.album === "Unknown Album" ||
+        s.album === "Unknown" ||
+        !s.duration ||
+        s.duration <= 0 ||
+        s.duration === 180;
+
+      const candidates = songs.filter(needsRepair);
 
       if (candidates.length === 0) return { repaired: 0 };
 
@@ -514,7 +556,7 @@ export async function repairLibraryMetadata() {
           const isBadTitle = !song.title || looksLikeUri(song.title);
           const isBadArtist = !song.artist || song.artist === "Unknown Artist" || song.artist === "Unknown";
           const isBadAlbum = !song.album || song.album === "Unknown Album" || song.album === "Unknown";
-          const isBadDuration = !song.duration || song.duration <= 0;
+          const isBadDuration = !song.duration || song.duration <= 0 || song.duration === 180;
 
           if (isBadTitle && parsed.title && !looksLikeUri(parsed.title)) {
             updates.title = parsed.title;
@@ -548,9 +590,27 @@ export async function repairLibraryMetadata() {
         console.error("Failed to commit repairLibraryMetadata:", err);
       }
 
+      const candidateIds = new Set(candidates.map((s) => s.id));
+      const remaining = getAllSongs().filter((s) => {
+        const badDur = !s.duration || s.duration <= 0 || s.duration === 180;
+        return badDur || (candidateIds.has(s.id) && !s.artwork_uri);
+      });
+      let probed = 0;
+      for (const song of remaining) {
+        try {
+          const changed = await updateExistingSong(song, song.file_uri);
+          if (changed) repaired++;
+        } catch (error) {
+          console.warn("Repair probe failed for:", song.file_uri, error);
+        }
+        probed++;
+        if (probed % 10 === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+      }
+
       if (repaired > 0) {
-        console.log(`Repaired ${repaired} songs in SQLite library with real artist/album/duration.`);
-        // Force backfill so artists and song_artists get populated
+        console.log(`Repaired ${repaired} songs in SQLite library with real artist/album/duration/artwork.`);
         try {
           db.runSync("DELETE FROM app_settings WHERE key = 'artist_backfill_done'");
           await backfillAllSongs();
