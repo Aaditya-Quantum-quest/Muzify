@@ -21,7 +21,7 @@ import Animated, {
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useIsFocused } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, {
   Path,
@@ -1232,6 +1232,7 @@ export default function StatisticsScreen() {
   const layout = useLayout();
   const { insets, padX } = layout;
   const router = useRouter();
+  const isFocused = useIsFocused();
   const goArtists = () => router.push("/artists");
 
   const onScroll = useHideTabBarOnScroll();
@@ -1302,7 +1303,7 @@ export default function StatisticsScreen() {
         }}
       >
         <Frame layout={layout}>
-          <MusicHeader {...HEADER_CONTENT.statistics} goArtists={goArtists} />
+          <MusicHeader {...HEADER_CONTENT.statistics} goArtists={goArtists} active={isFocused} />
 
           {/* range chips */}
           <Chips

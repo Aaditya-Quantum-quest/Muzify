@@ -134,7 +134,7 @@ const RootLayout = () => {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <PlayerProvider>
         <BootRedirect />
-        <Stack>
+        <Stack screenOptions={{ freezeOnBlur: true }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="(public)" options={{ headerShown: false }} />
         </Stack>

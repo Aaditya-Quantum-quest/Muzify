@@ -8,7 +8,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useIsFocused } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { cssInterop } from 'nativewind';
 import Svg, { Path, Circle } from 'react-native-svg';
@@ -101,9 +101,13 @@ const NoteIcon = ({ size = 56 }) => (
   </Svg>
 );
 
-function Equalizer({ color = AMBER }) {
+function Equalizer({ color = AMBER, isScreenActive = true }) {
   const bars = useRef([0, 1, 2].map(() => new Animated.Value(0))).current;
   useEffect(() => {
+    if (!isScreenActive) {
+      bars.forEach((v) => v.setValue(0));
+      return undefined;
+    }
     const loops = bars.map((v, i) =>
       Animated.loop(
         Animated.sequence([
@@ -114,7 +118,7 @@ function Equalizer({ color = AMBER }) {
     );
     loops.forEach((l) => l.start());
     return () => loops.forEach((l) => l.stop());
-  }, [bars]);
+  }, [bars, isScreenActive]);
   return (
     <View className="flex-row items-end h-4 gap-[2px]">
       {bars.map((v, i) => (
@@ -146,7 +150,7 @@ function RoundBtn({ children, onPress, className = '' }) {
 }
 
 /* ───────────── track row ───────────── */
-function TrackRow({ track, index, current, playing, liked, onPress, onLike }) {
+function TrackRow({ track, index, current, playing, liked, onPress, onLike, isScreenActive = true }) {
   return (
     <TouchableOpacity
       className="flex-row items-center h-16"
@@ -155,7 +159,7 @@ function TrackRow({ track, index, current, playing, liked, onPress, onLike }) {
     >
       <View className="w-9 items-center">
         {current && playing ? (
-          <Equalizer />
+          <Equalizer isScreenActive={isScreenActive} />
         ) : (
           <Text textTransform="capitalize"  className={`text-sm font-semibold ${current ? 'text-amb' : 'text-mut'}`}>{index + 1}</Text>
         )}
@@ -191,6 +195,7 @@ function TrackRow({ track, index, current, playing, liked, onPress, onLike }) {
 export default function PlaylistDetail() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const isFocused = useIsFocused();
   const { playlistId } = useLocalSearchParams();
   const { width } = useWindowDimensions();
 
@@ -383,6 +388,7 @@ export default function PlaylistDetail() {
               liked={likedTracks.has(t.id)}
               onPress={() => playTrack(i)}
               onLike={() => toggleTrackLike(t.id)}
+              isScreenActive={isFocused}
             />
           ))}
         </View>

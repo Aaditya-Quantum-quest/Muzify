@@ -70,6 +70,7 @@ export default function NowPlayingWidget({
   onClose,
   onSeek,
   className = '',
+  isScreenActive = true,
 }) {
   const [width, setWidth] = useState(0);
   const [phase, setPhase] = useState(0);
@@ -84,7 +85,7 @@ export default function NowPlayingWidget({
   }, [onSeek, duration]);
 
   useEffect(() => {
-    if (!isPlaying) return undefined;
+    if (!isPlaying || !isScreenActive) return undefined;
     let raf;
     let last = 0;
     const tick = (now) => {
@@ -96,7 +97,7 @@ export default function NowPlayingWidget({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [isPlaying]);
+  }, [isPlaying, isScreenActive]);
 
   const [pan, setPan] = useState(null);
   useEffect(() => {

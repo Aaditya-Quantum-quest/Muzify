@@ -18,7 +18,7 @@ import {
 import { getSetting } from "../../databases/queries/settings.js";
 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useIsFocused } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { cssInterop } from "nativewind";
 import {
@@ -745,6 +745,7 @@ export default function SettingsScreen() {
   const layout = useLayout();
   const { insets, isTablet, padX } = layout;
   const router = useRouter();
+  const isFocused = useIsFocused();
   const { playerTheme, setPlayerTheme, musicFolder, setOnboardingStep } =
     usePlayer();
 
@@ -906,7 +907,7 @@ export default function SettingsScreen() {
             <Text style={{ color: "white" }}>Test Music Scan</Text>
           </TouchableOpacity>
 
-          <MusicHeader {...HEADER_CONTENT.settings} goArtists={goArtists} />
+          <MusicHeader {...HEADER_CONTENT.settings} goArtists={goArtists} active={isFocused} />
 
           {/* chips */}
           <Chips items={TABS} active={tab} onChange={setTab} padX={padX} />
