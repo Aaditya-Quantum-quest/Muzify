@@ -13,7 +13,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useIsFocused } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   Search,
@@ -495,6 +495,7 @@ function LongPressMenu({
 export default function LibraryScreen() {
   const { insets, sidePad } = useLayout();
   const router = useRouter();
+  const isFocused = useIsFocused();
 
   const onScroll = useHideTabBarOnScroll();
 
@@ -639,7 +640,7 @@ export default function LibraryScreen() {
     <View>
       {/* header row: back arrow · wordmark · more */}
 
-      <MusicHeader {...HEADER_CONTENT.library} goArtists={goArtists} />
+      <MusicHeader {...HEADER_CONTENT.library} goArtists={goArtists} active={isFocused} />
 
       {/* chips (full-bleed scroller, gap 8, h-10, px-5, text-sm font-medium) */}
       <ScrollView
@@ -719,6 +720,7 @@ export default function LibraryScreen() {
                 cur={isCur}
                 playing={isPlaying}
                 onPlay={onPlay}
+                isScreenActive={isFocused}
               />
             );
           }
@@ -730,6 +732,7 @@ export default function LibraryScreen() {
               playing={isPlaying}
               onPlay={onPlay}
               onLongPress={() => setCtxItem(item)}
+              isScreenActive={isFocused}
             />
           ) : (
             <ListItem
@@ -737,6 +740,7 @@ export default function LibraryScreen() {
               cur={isCur}
               playing={isPlaying}
               onPlay={onPlay}
+              isScreenActive={isFocused}
             />
           );
         }}
@@ -838,7 +842,7 @@ export default function LibraryScreen() {
 }
 
 /* artwork tile for a song: cover image, or a music-note placeholder */
-function SongArt({ uri, cur, playing }) {
+function SongArt({ uri, cur, playing, isScreenActive = true }) {
   const [failed, setFailed] = useState(false);
   const showImage = Boolean(uri) && !failed;
 
@@ -862,7 +866,7 @@ function SongArt({ uri, cur, playing }) {
 
       {cur && (
         <View className="absolute inset-0 items-center justify-center bg-black/45">
-          <EqBars active={playing} />
+          <EqBars active={playing && isScreenActive} />
         </View>
       )}
     </View>
@@ -870,7 +874,7 @@ function SongArt({ uri, cur, playing }) {
 }
 
 /* song row: artwork · title · artist · duration | format, lime wash when active */
-function SongRow({ item, cur, playing, onPlay, onLongPress }) {
+function SongRow({ item, cur, playing, onPlay, onLongPress, isScreenActive = true }) {
   const metaColor = cur ? C.lime : C.mut;
 
   return (
@@ -893,7 +897,7 @@ function SongRow({ item, cur, playing, onPlay, onLongPress }) {
       )}
 
       <View className="flex-row items-center p-2.5">
-        <SongArt uri={item.artwork} cur={cur} playing={playing} />
+        <SongArt uri={item.artwork} cur={cur} playing={playing} isScreenActive={isScreenActive} />
 
         <View className="ml-3.5 min-w-0 flex-1">
           <Text
@@ -947,7 +951,7 @@ function SongRow({ item, cur, playing, onPlay, onLongPress }) {
 }
 
 /* same as Settings' Row: 64px tile (rounded-2xl) · gap 12 · base/bold title · xs subtitle · 36px round button */
-function ListItem({ item, cur, playing, onPlay }) {
+function ListItem({ item, cur, playing, onPlay, isScreenActive = true }) {
   return (
     <TouchableOpacity
       onPress={onPlay}
@@ -959,7 +963,7 @@ function ListItem({ item, cur, playing, onPlay }) {
 
         {cur && (
           <View className="absolute inset-0 items-end justify-end bg-black/35 pb-2 pr-2">
-            <EqBars active={playing} />
+            <EqBars active={playing && isScreenActive} />
           </View>
         )}
       </View>
@@ -998,7 +1002,7 @@ function ListItem({ item, cur, playing, onPlay }) {
   );
 }
 
-function GridItem({ item, cur, playing, onPlay }) {
+function GridItem({ item, cur, playing, onPlay, isScreenActive = true }) {
   return (
     <View className="flex-1">
       <TouchableOpacity
@@ -1011,7 +1015,7 @@ function GridItem({ item, cur, playing, onPlay }) {
 
           {cur && (
             <View className="absolute inset-0 items-end justify-end bg-black/35 pb-3 pr-3">
-              <EqBars active={playing} />
+              <EqBars active={playing && isScreenActive} />
             </View>
           )}
         </View>

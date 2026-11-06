@@ -8,7 +8,7 @@ import {
   Image,
   StyleSheet,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useIsFocused } from "expo-router";
 import { getMetadata, getArtwork, verifyMetadata } from "../../services/audioMetadata";
 import { writeMetadataAndSync } from "../../services/tagWriter";
 import { useSongs } from "../../hooks/useSongs";
@@ -16,6 +16,7 @@ import { useHideTabBarOnScroll } from "../../components/ui/BottomBar";
 
 const SongInfoScreen = () => {
   const router = useRouter();
+  const isFocused = useIsFocused();
   const songId = router.route.split("/").pop() || "";
   const songIdNum = parseInt(songId, 10);
   const [song, setSong] = useState(null);
@@ -111,6 +112,8 @@ const SongInfoScreen = () => {
     setEditing(false);
     setSaveStatus("");
   };
+
+  if (!isFocused) return null;
 
   if (loading) {
     return (

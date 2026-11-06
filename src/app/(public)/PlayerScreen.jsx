@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, PanResponder, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, ClipPath, Defs, G, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
@@ -226,6 +227,7 @@ function BottomPill() {
 export default function PlayerScreen() {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
 
   const [index, setIndex] = useState(0);
   const [pos, setPos] = useState(0);
@@ -243,10 +245,10 @@ export default function PlayerScreen() {
   }, []);
 
   useEffect(() => {
-    if (!playing || scrubbing) return undefined;
+    if (!isFocused || !playing || scrubbing) return undefined;
     const t = setInterval(() => setPos((p) => p + 0.25), 250);
     return () => clearInterval(t);
-  }, [playing, scrubbing]);
+  }, [isFocused, playing, scrubbing]);
 
   useEffect(() => {
     if (pos < track.duration) return;

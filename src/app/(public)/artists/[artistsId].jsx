@@ -10,7 +10,7 @@ import {
   Easing,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useIsFocused } from 'expo-router';
 import Svg, {
   Path,
   Circle,
@@ -104,11 +104,11 @@ const CardGradient = ({ id, colors }) => (
 );
 
 /* ───────────── Equalizer Bars (Now Playing) ───────────── */
-function EqualizerBar({ delay, active, playing }) {
+function EqualizerBar({ delay, active, playing, isScreenActive = true }) {
   const [anim] = useState(() => new Animated.Value(0.3));
 
   useEffect(() => {
-    if (!active || !playing) {
+    if (!isScreenActive || !active || !playing) {
       anim.setValue(0.3);
       return;
     }
@@ -130,7 +130,7 @@ function EqualizerBar({ delay, active, playing }) {
     );
     animation.start();
     return () => animation.stop();
-  }, [anim, active, playing, delay]);
+  }, [anim, active, playing, delay, isScreenActive]);
 
   return (
     <Animated.View
@@ -141,7 +141,7 @@ function EqualizerBar({ delay, active, playing }) {
 }
 
 /* ───────────── Song Row Component ───────────── */
-const SongRow = React.memo(({ song, rank, active, playing, onPress }) => {
+const SongRow = React.memo(({ song, rank, active, playing, onPress, isScreenActive = true }) => {
   const colors = useMemo(() => getArtistGradient(song.artist || song.title), [song.artist, song.title]);
 
   return (
@@ -195,9 +195,9 @@ const SongRow = React.memo(({ song, rank, active, playing, onPress }) => {
       {/* Duration or Equalizer */}
       {active && playing ? (
         <View className="flex-row items-center gap-1 px-2">
-          <EqualizerBar delay={0} active={active} playing={playing} />
-          <EqualizerBar delay={1} active={active} playing={playing} />
-          <EqualizerBar delay={2} active={active} playing={playing} />
+          <EqualizerBar delay={0} active={active} playing={playing} isScreenActive={isScreenActive} />
+          <EqualizerBar delay={1} active={active} playing={playing} isScreenActive={isScreenActive} />
+          <EqualizerBar delay={2} active={active} playing={playing} isScreenActive={isScreenActive} />
         </View>
       ) : (
         <Text className="text-xs font-medium text-[#665b84]">
@@ -258,6 +258,7 @@ AlbumCard.displayName = 'AlbumCard';
 function ArtistProfileContent({ artistId }) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const isFocused = useIsFocused();
 
   const {
     track: currentTrack,
@@ -638,6 +639,7 @@ function ArtistProfileContent({ artistId }) {
                     active={isCurrent}
                     playing={isPlayingGlobal}
                     onPress={() => handlePlaySong(rank)}
+                    isScreenActive={isFocused}
                   />
                 );
               })}
@@ -752,6 +754,7 @@ function ArtistProfileContent({ artistId }) {
                     active={isCurrent}
                     playing={isPlayingGlobal}
                     onPress={() => handlePlaySong(idx)}
+                    isScreenActive={isFocused}
                   />
                 );
               })}

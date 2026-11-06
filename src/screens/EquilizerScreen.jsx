@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Image, Switch, PanResponder } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useIsFocused } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import Svg, { Defs, LinearGradient, Stop, Path, Circle, Line } from 'react-native-svg';
 
@@ -220,6 +220,7 @@ const Pill = ({ children, active, onPress, className = '' }) => (
 export default function AudioSettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const isFocused = useIsFocused();
 
   // EQ state
   const [profiles, setProfiles] = useState({ A: [...PRESETS['Audiophile Reference']], B: [...PRESETS['Studio Flat']] });
@@ -277,6 +278,7 @@ export default function AudioSettingsScreen() {
 
   // Live RTA + VU
   useEffect(() => {
+    if (!isFocused) return undefined;
     const id = setInterval(() => {
       if (!masterOn || !playing) {
         setRta((a) => a.map(() => 6));
@@ -287,7 +289,7 @@ export default function AudioSettingsScreen() {
       setVu({ l: 70 + Math.random() * 18, r: 72 + Math.random() * 18 });
     }, 150);
     return () => clearInterval(id);
-  }, [masterOn, playing]);
+  }, [masterOn, playing, isFocused]);
 
   const peak = Math.max(vu.l, vu.r);
   const dbfs = (-(100 - peak) * 0.16).toFixed(1);
