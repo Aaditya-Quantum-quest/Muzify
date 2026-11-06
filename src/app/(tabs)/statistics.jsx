@@ -49,6 +49,7 @@ import Svg, {
 import MusicHeader from "../../components/subComponents/MusicHeader";
 import { HEADER_CONTENT } from "../../constants/headerContent";
 import { useHideTabBarOnScroll } from "../../components/ui/BottomBar";
+import { useStatistics } from "../../hooks/useStatistics";
 
 /* ───────────── constants ───────────── */
 
@@ -56,7 +57,6 @@ const AM = "#e49f33";
 const PK = "#ec6f8e";
 const VI = "#8b6cf0";
 const TL = "#3cc0b8";
-const OR = "#e0803a";
 const GR = "#34c38f";
 
 const RANGES = ["Week", "Month", "Year"];
@@ -87,11 +87,6 @@ function useLayout() {
   };
 }
 
-const rnd = (i) => {
-  const x = Math.sin(i * 127.1) * 43758.5453;
-  return x - Math.floor(x);
-};
-
 const fmt = (m) =>
   `${Math.floor(m / 60)}h ${String(Math.round(m % 60)).padStart(2, "0")}m`;
 
@@ -109,114 +104,13 @@ const useWidth = () => {
 
 // smooth bezier line through values
 const smoothPath = (v, x, y) => {
-  let d = `M${x(0)},${y(v[0])}`;
+  if (!v?.length) return `M${x(0)},${y(0)}`;
+  let d = `M${x(0)},${y(v[0] || 0)}`;
   for (let i = 1; i < v.length; i++) {
     const c = (x(i - 1) + x(i)) / 2;
-    d += `C${c},${y(v[i - 1])} ${c},${y(v[i])} ${x(i)},${y(v[i])}`;
+    d += `C${c},${y(v[i - 1] || 0)} ${c},${y(v[i] || 0)} ${x(i)},${y(v[i] || 0)}`;
   }
   return d;
-};
-
-/* ───────────── listening data ───────────── */
-
-// plays per hour, per weekday
-const H = DN.map((_, d) =>
-  Array.from({ length: 24 }, (_, h) => {
-    const g = (c, w, a) => a * Math.exp(-((h - c) ** 2) / (2 * w * w));
-
-    let v =
-      d > 4
-        ? g(11, 2.4, 18) + g(15, 2, 12) + g(21, 2.2, 28)
-        : g(8, 1.5, 20) + g(13, 2, 9) + g(20.5, 2, 30) + g(23, 1.2, 8);
-
-    v *= 0.75 + rnd(d * 24 + h) * 0.5;
-    if (h < 5) v *= 0.25;
-
-    return Math.round(v);
-  }),
-);
-
-const dayMin = H.map((r) => r.reduce((a, b) => a + b, 0));
-const dayHours = dayMin.map((m) => m / 60);
-const prevDayHours = dayHours.map((h, i) => h * (0.84 + rnd(i + 40) * 0.12));
-
-const RANGE_DATA = {
-  Week: {
-    v: dayHours,
-    p: prevDayHours,
-    l: DN.map((d) => d[0]),
-    s: "Hours per day",
-    d: "+12% vs last week",
-    avg: "3.7h",
-    longest: "2h 14m",
-    skip: "8.4%",
-  },
-  Month: {
-    v: [31.2, 28.4, 35.9, dayHours.reduce((a, b) => a + b, 0)],
-    p: [27, 26.5, 30.2, 31],
-    l: ["W1", "W2", "W3", "W4"],
-    s: "Hours per week",
-    d: "+8% vs last month",
-    avg: "4.6h",
-    longest: "3h 02m",
-    skip: "7.9%",
-  },
-  Year: {
-    v: [88, 102, 95, 121, 134, 118, 126, 141, 129, 150, 138, 146],
-    p: [70, 80, 84, 92, 101, 99, 104, 112, 108, 121, 119, 124],
-    l: ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"],
-    s: "Hours per month",
-    d: "+19% vs last year",
-    avg: "3.9h",
-    longest: "3h 41m",
-    skip: "8.1%",
-  },
-};
-
-/* ───────────── other data ───────────── */
-
-const TOP_ARTISTS = [
-  ["Kai Rivers", "KR", 11.4, "#ec6f8e,#f0a343"],
-  ["Luna Vale", "LV", 9.8, "#5b3fa0,#2a1a5e"],
-  ["Neon Harbor", "NH", 8.1, "#3a7ca5,#1b3a5c"],
-  ["Aarav Mehta", "AM", 6.7, "#d3358f,#4a1a7a"],
-  ["Zara Quinn", "ZQ", 4.2, "#1f9a9a,#0e3a5a"],
-];
-
-const TOP_SONGS = [
-  ["Neon Night Drive", "Kai Rivers", 86],
-  ["Chill Sunset", "Aarav Mehta", 74],
-  ["Golden Hour", "Luna Vale", 61],
-  ["Synthwave Dreams", "Neon Harbor", 55],
-  ["Rainy Day", "Mira Okafor", 42],
-];
-
-// [label, percent, color, plays]
-const GEN = [
-  ["Pop", 34, AM, 436],
-  ["Lo-fi", 24, TL, 308],
-  ["Synthwave", 18, PK, 231],
-  ["Acoustic", 14, VI, 180],
-  ["Jazz", 10, OR, 129],
-];
-
-const AUD = [
-  ["Lossless", 16],
-  ["High", 54],
-  ["Standard", 30],
-];
-
-const DISCOVERIES = [2, 5, 3, 7, 4, 9, 6, 11];
-const SKIPS = [6, 8, 5, 9, 14, 8, 7, 12, 6, 8];
-
-const TODAY = 23;
-
-const calendarValue = (d) => {
-  if (d > TODAY) return 0;
-  if (d === TODAY) return dayMin[4];
-  if (rnd(d * 3.7) < 0.2) return 0;
-
-  return Math.round(35 + rnd(d * 9.1) * 250);
 };
 
 /* ───────────── page building blocks ───────────── */
@@ -540,15 +434,20 @@ function AreaChart({
   const pt = 8;
   const pb = axis ? 22 : 2;
 
-  const n = series[0].v.length;
-  const mx = max || Math.max(...series.flatMap((s) => s.v)) * 1.15;
+  const seriesSafe = series.map((s) => ({
+    ...s,
+    v: s.v?.length ? s.v : [0, 0],
+  }));
+  const n = Math.max(2, seriesSafe[0].v.length);
+  const values = seriesSafe.flatMap((s) => s.v);
+  const mx = max || Math.max(1, ...values) * 1.15;
 
-  const x = (i) => pl + (i * (W - pl - pr)) / (n - 1);
+  const x = (i) => pl + (i * (W - pl - pr)) / Math.max(1, n - 1);
   const y = (a) => pt + (height - pt - pb) * (1 - a / mx);
 
   const ready = W > 0;
-  const dataKey = series.map((s) => s.v.join(",")).join("|");
-  const named = series.filter((s) => s.name);
+  const dataKey = seriesSafe.map((s) => s.v.join(",")).join("|");
+  const named = seriesSafe.filter((s) => s.name);
 
   // lines sweep in from the left, and again whenever the range changes
   useEffect(() => {
@@ -637,7 +536,7 @@ function AreaChart({
         {ready && (
           <Svg width={W} height={height}>
             <Defs>
-              {series.map((s, k) => (
+              {seriesSafe.map((s, k) => (
                 <SvgGradient
                   key={k}
                   id={`${id}${k}`}
@@ -711,7 +610,7 @@ function AreaChart({
 
             {/* draw back series first so the main one sits on top */}
             <G clipPath={`url(#${id}clip)`}>
-              {series
+              {seriesSafe
                 .map((s, k) => ({ s, k }))
                 .reverse()
                 .map(({ s, k }) => {
@@ -753,14 +652,14 @@ function AreaChart({
                 {!compact ? (
                   <AnimatedCircle
                     cx={x(n - 1)}
-                    cy={y(series[0].v[n - 1])}
+                    cy={y(seriesSafe[0].v[n - 1])}
                     fill={PK}
                     animatedProps={pulseProps}
                   />
                 ) : null}
                 <AnimatedCircle
                   cx={x(n - 1)}
-                  cy={y(series[0].v[n - 1])}
+                  cy={y(seriesSafe[0].v[n - 1])}
                   r={compact ? 3.5 : 4.5}
                   fill={PK}
                   stroke="#13121a"
@@ -769,7 +668,7 @@ function AreaChart({
                 />
               </>
             ) : (
-              series.map((s, k) => (
+              seriesSafe.map((s, k) => (
                 <Circle
                   key={k}
                   cx={x(sel)}
@@ -810,7 +709,7 @@ function AreaChart({
               </Text>
             ) : null}
 
-            {series.map((s, k) => (
+            {seriesSafe.map((s, k) => (
               <View
                 key={k}
                 style={{
@@ -896,8 +795,8 @@ function MiniBar({ x, w, bh, base, fill, opacity, delay }) {
 function MiniBars({ values, labels, selected, onSelect, height = 74 }) {
   const [W, onLayout] = useWidth();
 
-  const mx = Math.max(...values);
-  const n = values.length;
+  const mx = Math.max(1, ...(values.length ? values : [0]));
+  const n = Math.max(1, values.length);
   const slot = W / n;
   const bw = Math.min(16, slot - 6);
   const top = 6;
@@ -1029,8 +928,8 @@ function HourBars({ data }) {
   const height = 150;
   const base = 126;
   const maxBar = 100;
-  const mx = Math.max(...data);
-  const peak = data.indexOf(mx);
+  const mx = Math.max(1, ...(data.length ? data : [0]));
+  const peak = Math.max(0, data.indexOf(Math.max(0, ...data)));
   const slot = W / 24;
   const bw = Math.max(4, slot - 4);
 
@@ -1758,9 +1657,14 @@ function CalendarLegend() {
   );
 }
 
-function Calendar({ onSelectDay, selectedDay }) {
-  const offset = (new Date(2026, 9, 1).getDay() + 6) % 7;
-
+function Calendar({
+  onSelectDay,
+  selectedDay,
+  daysInMonth = 31,
+  offset = 0,
+  today = 1,
+  minutes = [],
+}) {
   return (
     <View>
       <View style={{ flexDirection: "row", marginBottom: 4 }}>
@@ -1785,20 +1689,20 @@ function Calendar({ onSelectDay, selectedDay }) {
           <View key={`empty-${i}`} style={{ width: CELL, aspectRatio: 1 }} />
         ))}
 
-        {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => {
-          const minutes = calendarValue(d);
-          const future = d > TODAY;
-          const today = d === TODAY;
-          const alpha = minutes ? 0.2 + 0.8 * Math.min(1, minutes / 300) : 0;
+        {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => {
+          const value = minutes[d] || 0;
+          const future = d > today;
+          const isToday = d === today;
+          const alpha = value ? 0.2 + 0.8 * Math.min(1, value / 300) : 0;
 
           return (
             <DayCell
               key={d}
               d={d}
               alpha={alpha}
-              minutes={minutes}
+              minutes={value}
               future={future}
-              today={today}
+              today={isToday}
               selected={d === selectedDay}
               onPress={() => onSelectDay(d)}
             />
@@ -2190,44 +2094,60 @@ export default function StatisticsScreen() {
   const router = useRouter();
   const isFocused = useIsFocused();
   const goArtists = () => router.push("/artists");
+  const stats = useStatistics();
 
   const onScroll = useHideTabBarOnScroll();
 
   const [range, setRange] = useState("Week");
-  const [selectedDay, setSelectedDay] = useState(4); // Fri
-  const [genreIdx, setGenreIdx] = useState(1);
-  const [calendarDay, setCalendarDay] = useState(TODAY);
+  const [selectedDay, setSelectedDay] = useState(-1);
+  const [genreIdx, setGenreIdx] = useState(0);
+  const [calendarDay, setCalendarDay] = useState(stats.calendar.today);
 
-  const rangeData = RANGE_DATA[range];
+  useEffect(() => {
+    setCalendarDay(stats.calendar.today);
+  }, [stats.calendar.today, stats.calendar.month, stats.calendar.year]);
+
+  useEffect(() => {
+    if (genreIdx >= stats.genres.length) setGenreIdx(0);
+  }, [genreIdx, stats.genres.length]);
+
+  const rangeData = stats.range[range];
+  const dayHours = stats.dayHours;
+  const GEN = stats.genres;
+  const AUD = stats.quality;
+  const TOP_ARTISTS = stats.topArtists;
+  const TOP_SONGS = stats.topSongs;
+  const TODAY = stats.calendar.today;
+  const calendarValue = (d) => stats.calendar.minutes[d] || 0;
   const totalMinutes = rangeData.v.reduce((a, b) => a + b, 0) * 60;
 
-  // hourly bars follow the day picked in "Daily hours" (none picked = weekly average)
   const clockData = useMemo(() => {
+    const grid = stats.hourGrid;
     if (selectedDay < 0) {
-      return H[0].map((_, h) =>
-        Math.round(H.reduce((sum, row) => sum + row[h], 0) / 7),
+      return grid[0].map((_, h) =>
+        Math.round(grid.reduce((sum, row) => sum + row[h], 0) / 7),
       );
     }
-    return H[selectedDay];
-  }, [selectedDay]);
+    return grid[selectedDay] || Array(24).fill(0);
+  }, [selectedDay, stats.hourGrid]);
 
   const peakHour = clockData.indexOf(Math.max(...clockData));
 
   const dailyValue =
     selectedDay < 0
       ? `${(dayHours.reduce((a, b) => a + b, 0) / 7).toFixed(1)}h`
-      : `${dayHours[selectedDay].toFixed(1)}h`;
+      : `${(dayHours[selectedDay] || 0).toFixed(1)}h`;
 
+  const monthShort = stats.calendar.monthLabel.split(" ")[0].slice(0, 3);
+  const calendarMinutes = calendarValue(calendarDay);
   const calendarCaption =
     calendarDay > TODAY
-      ? `Oct ${calendarDay}: nothing yet`
-      : `Oct ${calendarDay}${calendarDay === TODAY ? " (today)" : ""}: ${
-          calendarValue(calendarDay)
-            ? `${fmt(calendarValue(calendarDay))} of listening`
-            : "no listening"
+      ? `${monthShort} ${calendarDay}: nothing yet`
+      : `${monthShort} ${calendarDay}${calendarDay === TODAY ? " (today)" : ""}: ${
+          calendarMinutes ? `${fmt(calendarMinutes)} of listening` : "no listening"
         }`;
 
-  const genre = GEN[genreIdx];
+  const genre = GEN[genreIdx] || GEN[0];
 
   return (
     <View className="flex-1 bg-[#08080f]" style={{ paddingTop: insets.top }}>
@@ -2281,8 +2201,8 @@ export default function StatisticsScreen() {
                 title="Total listen"
                 subtitle={rangeData.s}
                 value={fmt(totalMinutes)}
-                note={`↗ ${rangeData.d}`}
-                variant="pos"
+                note={rangeData.d}
+                variant={rangeData.variant || "pos"}
               />
 
               <AreaChart
@@ -2348,16 +2268,16 @@ export default function StatisticsScreen() {
                 icon="sparkles-outline"
                 title="Discoveries"
                 subtitle="New songs / week"
-                value="47"
-                note="+6 artists"
+                value={stats.discoveriesValue}
+                note={stats.discoveriesNote}
                 variant="pos"
               >
                 <AreaChart
                   id="ds"
                   compact
                   height={56}
-                  max={13}
-                  series={[{ v: DISCOVERIES, c: TL, o: 0.25, w: 2 }]}
+                  max={Math.max(1, ...stats.discoveries)}
+                  series={[{ v: stats.discoveries, c: TL, o: 0.25, w: 2 }]}
                 />
               </MiniCard>
 
@@ -2383,16 +2303,16 @@ export default function StatisticsScreen() {
                 icon="play-skip-forward-outline"
                 title="Skips"
                 subtitle="Skipped early"
-                value="8.4%"
-                note="2 spikes"
+                value={stats.skipRate}
+                note={stats.skipNote}
                 variant="neg"
               >
                 <AreaChart
                   id="sk"
                   compact
                   height={56}
-                  max={18}
-                  series={[{ v: SKIPS, c: "#fb7185", o: 0.3, w: 1.8 }]}
+                  max={Math.max(1, ...stats.skips)}
+                  series={[{ v: stats.skips, c: "#fb7185", o: 0.3, w: 1.8 }]}
                 />
               </MiniCard>
 
@@ -2401,8 +2321,8 @@ export default function StatisticsScreen() {
                 icon="musical-notes-outline"
                 title="Audio quality"
                 subtitle="Stream mix"
-                value="70%"
-                note="High+"
+                value={stats.qualityValue}
+                note={stats.qualityNote}
                 variant="pur"
               >
                 <QualityRow
@@ -2509,11 +2429,18 @@ export default function StatisticsScreen() {
 
             {/* ── calendar ── */}
             <Card>
-              <CardHeader title="Listening days" subtitle="October 2026" />
+              <CardHeader
+                title="Listening days"
+                subtitle={stats.calendar.monthLabel}
+              />
 
               <Calendar
                 onSelectDay={setCalendarDay}
                 selectedDay={calendarDay}
+                daysInMonth={stats.calendar.daysInMonth}
+                offset={stats.calendar.offset}
+                today={TODAY}
+                minutes={stats.calendar.minutes}
               />
 
               {/* caption: re-animates whenever the selected day changes */}
@@ -2634,12 +2561,17 @@ export default function StatisticsScreen() {
                       className="mt-2 text-4xl font-bold text-[#f2f2f5]"
                       style={{ fontVariant: ["tabular-nums"] }}
                     >
-                      5%
+                      {`${stats.habits.repeatRate}%`}
                     </Text>
                   </View>
 
                   <View style={{ flex: 1 }}>
-                    <GradBar id="rep" pct={5} from={AM} to={PK} />
+                    <GradBar
+                      id="rep"
+                      pct={stats.habits.repeatRate}
+                      from={AM}
+                      to={PK}
+                    />
                     <Text
                       textTransform="capitalize"
                       numberOfLines={1}
@@ -2655,7 +2587,7 @@ export default function StatisticsScreen() {
                   icon="musical-notes-outline"
                   accent="#e49f33"
                   label="Total listen"
-                  value="1,284"
+                  value={String(stats.habits.totalPlays)}
                   note="plays so far"
                 />
                 <HabitTile
@@ -2663,7 +2595,7 @@ export default function StatisticsScreen() {
                   icon="eye-off-outline"
                   accent="#ec6f8e"
                   label="Never listened"
-                  value="37"
+                  value={String(stats.habits.neverPlayed)}
                   note="downloaded, no plays"
                 />
                 <HabitTile
@@ -2671,8 +2603,8 @@ export default function StatisticsScreen() {
                   icon="calendar-outline"
                   accent="#7c9cff"
                   label="First listen"
-                  value="Mar 14, 2026"
-                  note="Chill Sunset"
+                  value={stats.habits.firstListen}
+                  note={stats.habits.firstTitle}
                   valueClass="text-sm"
                 />
                 <HabitTile
@@ -2680,8 +2612,8 @@ export default function StatisticsScreen() {
                   icon="time-outline"
                   accent="#5fd0a5"
                   label="Last listen"
-                  value="Today, 9:41 pm"
-                  note="Neon Night Drive"
+                  value={stats.habits.lastListen}
+                  note={stats.habits.lastTitle}
                   valueClass="text-sm"
                 />
               </View>
@@ -2693,6 +2625,10 @@ export default function StatisticsScreen() {
                 title="Top artists"
                 subtitle="Hours listened this year"
               />
+
+              {TOP_ARTISTS.length === 0 ? (
+                <Text className="text-sm text-[#9d9da8]">No plays yet</Text>
+              ) : null}
 
               {TOP_ARTISTS.map(([name, initials, hours, gradient], i) => (
                 <View
@@ -2707,7 +2643,11 @@ export default function StatisticsScreen() {
                     gradient={gradient}
                     title={name}
                     value={`${hours}h`}
-                    pct={(hours / TOP_ARTISTS[0][2]) * 100}
+                    pct={
+                      TOP_ARTISTS[0][2]
+                        ? (hours / TOP_ARTISTS[0][2]) * 100
+                        : 0
+                    }
                   />
                 </View>
               ))}
@@ -2719,6 +2659,10 @@ export default function StatisticsScreen() {
                 title="Most played"
                 subtitle="Songs you came back to"
               />
+
+              {TOP_SONGS.length === 0 ? (
+                <Text className="text-sm text-[#9d9da8]">No plays yet</Text>
+              ) : null}
 
               {TOP_SONGS.map(([title, artist, plays], i) => (
                 <View
@@ -2732,7 +2676,7 @@ export default function StatisticsScreen() {
                     title={title}
                     subtitle={artist}
                     value={String(plays)}
-                    pct={(plays / TOP_SONGS[0][2]) * 100}
+                    pct={TOP_SONGS[0][2] ? (plays / TOP_SONGS[0][2]) * 100 : 0}
                   />
                 </View>
               ))}

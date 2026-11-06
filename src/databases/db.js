@@ -230,6 +230,32 @@ function migrateArtistSchema() {
   }
 }
 
+function migrateListenSchema() {
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS listen_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      song_id INTEGER,
+      started_at INTEGER NOT NULL,
+      duration_ms INTEGER NOT NULL DEFAULT 0,
+      completed INTEGER NOT NULL DEFAULT 0,
+      skipped INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+
+  const indexes = [
+    "CREATE INDEX IF NOT EXISTS idx_listen_started ON listen_events(started_at)",
+    "CREATE INDEX IF NOT EXISTS idx_listen_song ON listen_events(song_id)",
+  ];
+
+  for (const sql of indexes) {
+    try {
+      db.execSync(sql);
+    } catch (error) {
+      console.warn("Failed to create listen index", sql, error);
+    }
+  }
+}
+
 export function initializeDatabase() {
   db.execSync("PRAGMA foreign_keys = ON");
   db.execSync(`
@@ -262,4 +288,5 @@ export function initializeDatabase() {
 
   migrateSongsSchema();
   migrateArtistSchema();
+  migrateListenSchema();
 }
