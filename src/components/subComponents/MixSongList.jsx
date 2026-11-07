@@ -406,38 +406,48 @@ function ExplicitTag() {
 function Cover({ track, size = 50, radius = 15, iconSize = 22, children }) {
   const Icon = track.Icon || Music;
   const [artFailed, setArtFailed] = useState(false);
-  const showArt = Boolean(track.artwork) && !artFailed;
+  const artworkUri = track.artwork || null;
+  const showArt = Boolean(artworkUri) && !artFailed;
+
+  useEffect(() => {
+    setArtFailed(false);
+  }, [artworkUri]);
 
   return (
-    <LinearGradient
-      colors={track.colors || COVER_COLORS[0]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
+    <View
       style={{
         width: size,
         height: size,
         borderRadius: radius,
+        overflow: "hidden",
         alignItems: "center",
         justifyContent: "center",
-        overflow: "hidden",
+        backgroundColor: "#1a1a20",
       }}
     >
       <LinearGradient
-        colors={["rgba(255,255,255,0.22)", "rgba(255,255,255,0)"]}
+        colors={track.colors || COVER_COLORS[0]}
         start={{ x: 0, y: 0 }}
-        end={{ x: 0.7, y: 0.7 }}
-        style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
       />
       {showArt ? (
         <Image
-          source={{ uri: track.artwork }}
+          source={{ uri: artworkUri }}
           onError={() => setArtFailed(true)}
-          style={StyleSheet.absoluteFill}
+          style={{ width: size, height: size }}
           resizeMode="cover"
         />
-      ) : null}
+      ) : (
+        <LinearGradient
+          colors={["rgba(255,255,255,0.22)", "rgba(255,255,255,0)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0.7, y: 0.7 }}
+          style={StyleSheet.absoluteFill}
+        />
+      )}
       {children || (!showArt ? <Icon size={iconSize} color="#ffffff" strokeWidth={2} /> : null)}
-    </LinearGradient>
+    </View>
   );
 }
 
