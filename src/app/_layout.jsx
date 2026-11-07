@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useRouter, ThemeProvider, DarkTheme } from "expo-router";
 import { useFonts } from "expo-font";
 import { ActivityIndicator, View, Platform, Text } from "react-native";
 import * as NavigationBar from "expo-navigation-bar";
@@ -133,11 +133,22 @@ const RootLayout = () => {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <PlayerProvider>
-        <BootRedirect />
-        <Stack screenOptions={{ freezeOnBlur: true }}>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="(public)" options={{ headerShown: false }} />
-        </Stack>
+        <ThemeProvider value={DarkTheme}>
+          <BootRedirect />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              animation: Platform.OS === "ios" ? "default" : "slide_from_right",
+              animationMatchesGesture: true,
+              gestureEnabled: true,
+              contentStyle: { backgroundColor: "#0b0b0e" },
+              freezeOnBlur: true,
+            }}
+          >
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="(public)" options={{ headerShown: false }} />
+          </Stack>
+        </ThemeProvider>
       </PlayerProvider>
     </GestureHandlerRootView>
   );
