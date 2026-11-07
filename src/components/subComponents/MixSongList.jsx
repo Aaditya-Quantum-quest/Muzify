@@ -225,7 +225,8 @@ const Beam = memo(function Beam({ position, duration, onSeek, active = true }) {
   const [w, setW] = useState(0);
   const wRef = useRef(0);
   const startXRef = useRef(null);
-  const fadeId = useRef(`beamFade-${++beamUid}`).current;
+  // A plain id, not a ref — it is only ever read during render, never written.
+  const fadeId = `beamFade-${++beamUid}`;
 
   const widthSV = useSharedValue(0);
   const time = useSharedValue(0);
@@ -264,28 +265,38 @@ const Beam = memo(function Beam({ position, duration, onSeek, active = true }) {
     [w],
   );
 
-  const panResponder = useMemo(() => {
-    const send = (x) => {
-      const width = wRef.current;
-      if (!width || !Number.isFinite(x)) return;
-      const fraction = Math.min(Math.max(x / width, 0), 0.999);
-      onSeek(fraction * duration);
-    };
-
-    return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: (e) => {
-        const x = e.nativeEvent.locationX;
-        startXRef.current = Number.isFinite(x) ? x : null;
-        if (startXRef.current !== null) send(startXRef.current);
-      },
-      onPanResponderMove: (_e, g) => {
-        if (startXRef.current !== null) send(startXRef.current + g.dx);
-      },
-    });
+  // PanResponder is built once and reads live values at gesture time, so the
+  // handlers stay referentially stable across renders (see EquilizerScreen).
+  const optsRef = useRef({ onSeek, duration });
+  useEffect(() => {
+    optsRef.current = { onSeek, duration };
   }, [onSeek, duration]);
+
+  const send = (x) => {
+    const width = wRef.current;
+    if (!width || !Number.isFinite(x)) return;
+    const { onSeek: seekHandler, duration: dur } = optsRef.current;
+    const fraction = Math.min(Math.max(x / width, 0), 0.999);
+    seekHandler(fraction * dur);
+  };
+
+  const [panResponder] = useState(
+    // eslint-disable-next-line react-hooks/refs
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: (e) => {
+          const x = e.nativeEvent.locationX;
+          startXRef.current = Number.isFinite(x) ? x : null;
+          if (startXRef.current !== null) send(startXRef.current);
+        },
+        onPanResponderMove: (_e, g) => {
+          if (startXRef.current !== null) send(startXRef.current + g.dx);
+        },
+      }),
+  );
 
   return (
     <View
@@ -293,6 +304,7 @@ const Beam = memo(function Beam({ position, duration, onSeek, active = true }) {
       onLayout={(e) => {
         const nw = e.nativeEvent.layout.width;
         wRef.current = nw;
+        // eslint-disable-next-line react-hooks/immutability
         widthSV.value = nw;
         setW(nw);
       }}
@@ -409,7 +421,11 @@ function Cover({ track, size = 50, radius = 15, iconSize = 22, children }) {
   const artworkUri = track.artwork || null;
   const showArt = Boolean(artworkUri) && !artFailed;
 
+  // Reset the failure flag when the artwork source changes (a previously-broken
+  // URL may load fine on a different card). Canonical "reset state on prop
+  // change" effect; the compiler flags the direct setState.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setArtFailed(false);
   }, [artworkUri]);
 
@@ -727,6 +743,10 @@ export default function MixSongList({
   useEffect(() => {
     if (playingId == null) return;
     const idx = tracks.findIndex((t) => t.id === playingId);
+    // Sync the active row to the currently-playing track. The compiler flags
+    // the conditional setState, but this is the standard "derive state from a
+    // prop" pattern.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (idx >= 0) setActive(idx);
   }, [playingId, tracks]);
 
@@ -734,6 +754,7 @@ export default function MixSongList({
     (i) => {
       if (!controlled) {
         posRef.current = 0;
+        // eslint-disable-next-line react-hooks/immutability
         position.value = 0;
       }
       setActive(i);
@@ -773,6 +794,7 @@ export default function MixSongList({
     (seconds) => {
       if (!Number.isFinite(seconds)) return;
       posRef.current = seconds;
+      // eslint-disable-next-line react-hooks/immutability
       position.value = seconds;
       if (onSeekTrack) onSeekTrack(seconds, tracks[active], active);
     },

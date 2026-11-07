@@ -155,6 +155,9 @@ const WordSlot = memo(function WordSlot({
     if (busy.current) return;
     busy.current = true;
     const next = idx.current + 1;
+    // `pos` is a stable shared value, not an effect dependency; the compiler
+    // only flags it because `advance` is also used inside an effect.
+    // eslint-disable-next-line react-hooks/immutability
     pos.value = withTiming(
       next,
       { duration: swipeMs, easing: SWIPE_EASING },

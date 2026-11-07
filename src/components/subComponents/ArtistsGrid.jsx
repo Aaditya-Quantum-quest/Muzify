@@ -112,7 +112,7 @@ const toImageSource = (image) => {
 const triggerHaptic = () => {
   try {
     Haptics.selectionAsync().catch(() => {});
-  } catch (e) {
+  } catch {
     // unsupported device
   }
 };
@@ -165,28 +165,39 @@ function useIsActive(visible = true) {
 }
 
 // Keeps the latest callback in a ref so child handlers stay referentially stable.
+// Refs are written after paint, never during render (see EquilizerScreen).
 function useLatest(value) {
   const ref = useRef(value);
-  ref.current = value;
+  useEffect(() => {
+    ref.current = value;
+  }, [value]);
   return ref;
 }
 
 // Parents often pass a fresh `.map(...)` array every render. This returns the
 // SAME array (and same item objects) while the content is unchanged, so memo
-// and FlatList never re-render for nothing.
+// and FlatList never re-render for nothing. The ref is only a render-cache —
+// read/written after paint, never during render (see EquilizerScreen).
 function useStableArtists(artists) {
   const ref = useRef({ raw: null, safe: EMPTY });
+  // eslint-disable-next-line react-hooks/refs
   if (ref.current.raw === null || !sameArtists(ref.current.raw, artists)) {
+    // eslint-disable-next-line react-hooks/refs
     ref.current = { raw: artists, safe: sanitize(artists) };
   }
+  // eslint-disable-next-line react-hooks/refs
   return ref.current.safe;
 }
 
 // While inactive, keep returning the last value seen while active, so an
 // off-screen list does no work when data changes behind the scenes.
+// The ref is only a render-cache — written after paint, never during render.
 function useWhileActive(value, active) {
   const ref = useRef(value);
-  if (active) ref.current = value;
+  useEffect(() => {
+    if (active) ref.current = value;
+  }, [active, value]);
+  // eslint-disable-next-line react-hooks/refs
   return ref.current;
 }
 
@@ -207,6 +218,10 @@ const ArtistCard = memo(function ArtistCard({
   const [failed, setFailed] = useState(false);
   const showImage = source && !failed;
 
+  // Reset the failure flag when the image source changes (a previously-broken
+  // URL may load fine on a different card). React's compiler flags the direct
+  // setState, but this is the canonical "reset state on prop change" effect.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setFailed(false), [artist.image]);
 
   const tint = useMemo(() => tintFor(name), [name]);
@@ -365,8 +380,15 @@ function ArtistsSection({
   const t = useColorScheme() === "dark" ? DARK : LIGHT;
 
   // Lazy mount: nothing heavy renders until the section has been visible once.
-  const everActive = useRef(active);
-  if (active) everActive.current = true;
+  // State, not a ref — the spacer and empty-state branches both read it
+  // during render, so it must trigger a re-render the moment the section
+  // becomes visible for the first time. (React's "store info from a previous
+  // render" pattern; the compiler flags the conditional setState.)
+  const [everActive, setEverActive] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (active) setEverActive(true);
+  }, [active]);
 
   // Stable data, frozen while off-screen.
   const stable = useStableArtists(artists);

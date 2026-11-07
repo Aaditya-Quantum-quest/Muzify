@@ -1,462 +1,431 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useIsFocused } from "expo-router";
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { useIsFocused } from 'expo-router';
 import {
-  Svg,
-  Path,
-  Circle,
-  Defs,
-  LinearGradient,
-  RadialGradient,
-  Stop,
-} from 'react-native-svg';
-import {
-  View,
-  Text,
-  Dimensions,
+  AccessibilityInfo,
   Animated,
-  PanResponder,
-  TouchableOpacity,
+  AppState,
+  Dimensions,
   Easing,
+  PanResponder,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Music } from 'lucide-react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop, Path } from 'react-native-svg';
+import { useWelcomeBackground } from './welcomeBackground';
 
-
+// ─────────────────────────────────────────────────────────────
+// Static layout constants (computed once, never per render)
+// ─────────────────────────────────────────────────────────────
 const { width: SW, height: SH } = Dimensions.get('window');
 
-const SLIDER_WIDTH = Math.min(SW - 68, 300);
-const KNOB_SIZE = 48;
-const MAX_DRAG = SLIDER_WIDTH - KNOB_SIZE - 10;
+const HERO_H = Math.round(SH * 0.76);
 
-// Hero disc scales with the screen so it never collides with the bottom panel
-const DISC_SIZE = Math.min(SW * 0.7, SH * 0.31, 290);
+const WORDMARK_SIZE = Math.min(58, Math.round(SW * 0.148));
 
+const SLIDER_W = Math.min(SW - 56, 334);
+const SLIDER_H = 60;
+const KNOB = 50;
+const KNOB_INSET = (SLIDER_H - KNOB) / 2;
+const MAX_DRAG = SLIDER_W - KNOB - KNOB_INSET * 2;
+// Fill is a full-width bar shifted left, so only translateX animates (native driver friendly)
+const FILL_X0 = -(SLIDER_W - (KNOB + KNOB_INSET * 2));
 
-// Decorative vinyl record (pure UI, uses react-native-svg already in the project)
-function VinylDisc({ size }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 200 200">
-      <Defs>
-        <LinearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0" stopColor="#8a5cff" />
-          <Stop offset="1" stopColor="#2ad0ff" />
-        </LinearGradient>
-        <LinearGradient id="label" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0" stopColor="#6b45cd" />
-          <Stop offset="1" stopColor="#2ad0ff" />
-        </LinearGradient>
-        <RadialGradient id="body" cx="50%" cy="50%" r="50%">
-          <Stop offset="0" stopColor="#1c1546" />
-          <Stop offset="1" stopColor="#07051a" />
-        </RadialGradient>
-      </Defs>
+// Equalizer: every bar's keyframes are precomputed once at module level
+const EQ_INPUT = [0, 0.25, 0.5, 0.75, 1];
+const EQ_BASE = [0.25, 0.55, 1, 0.55];
+const EQ_HEIGHTS = [
+  10, 16, 24, 14, 28, 20, 12, 26, 18, 30, 22, 14, 28, 16, 24, 12, 30, 20, 14,
+  26, 18, 28, 12, 22, 30, 16, 24, 14, 26, 20, 12, 28, 18, 24, 14, 10,
+];
+const EQ_BARS = EQ_HEIGHTS.map((h, i) => {
+  const k = i % 4;
+  const scale = [
+    EQ_BASE[k],
+    EQ_BASE[(k + 1) % 4],
+    EQ_BASE[(k + 2) % 4],
+    EQ_BASE[(k + 3) % 4],
+    EQ_BASE[k],
+  ];
+  // Keeps bars anchored to the bottom while scaling from their center
+  const shift = scale.map((s) => (h / 2) * (1 - s));
+  return { h, scale, shift, accent: i % 6 === 0 };
+});
 
-      <Circle cx="100" cy="100" r="97" fill="url(#body)" stroke="url(#rim)" strokeWidth="2.5" />
-
-      {[88, 80, 72, 64, 56, 48].map((r) => (
-        <Circle
-          key={r}
-          cx="100"
-          cy="100"
-          r={r}
-          fill="none"
-          stroke="#ffffff"
-          strokeOpacity={0.06}
-          strokeWidth={1}
-        />
-      ))}
-
-      {/* Light sheen */}
-      <Path d="M100 100 L100 5 A95 95 0 0 1 175 42 Z" fill="#ffffff" fillOpacity={0.07} />
-      <Path d="M100 100 L100 195 A95 95 0 0 1 25 158 Z" fill="#ffffff" fillOpacity={0.05} />
-
-      {/* Center label */}
-      <Circle cx="100" cy="100" r="34" fill="url(#label)" />
-      <Circle cx="100" cy="100" r="34" fill="none" stroke="#ffffff" strokeOpacity={0.35} strokeWidth="1.5" />
-      <Circle cx="100" cy="100" r="22" fill="none" stroke="#ffffff" strokeOpacity={0.25} strokeWidth="1" />
-      <Circle cx="100" cy="100" r="5" fill="#05040f" />
-    </Svg>
-  );
+// ─────────────────────────────────────────────────────────────
+// Small hooks
+// ─────────────────────────────────────────────────────────────
+function useAppActive() {
+  const [active, setActive] = useState(AppState.currentState === 'active');
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) =>
+      setActive(s === 'active')
+    );
+    return () => sub.remove();
+  }, []);
+  return active;
 }
 
+function useReduceMotion() {
+  const [reduce, setReduce] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled().then((v) => mounted && setReduce(v));
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduce);
+    return () => {
+      mounted = false;
+      sub.remove();
+    };
+  }, []);
+  return reduce;
+}
 
-export default function WelcomeScreen({ onGetStarted }) {
-  const insets = useSafeAreaInsets();
-  const isFocused = useIsFocused();
+// ─────────────────────────────────────────────────────────────
+// Hero layer: rotating image + one gradient fade.
+// Only re-renders when the picture itself changes.
+// Remote (Google Drive) image fades in; if it errors or is too slow,
+// the bundled fallback is used instead.
+// ─────────────────────────────────────────────────────────────
+const REMOTE_TIMEOUT_MS = 5000;
 
+const Hero = memo(function Hero({ uri, fallback }) {
+  const [failedUri, setFailedUri] = useState(null);
+  const [fade] = useState(() => new Animated.Value(0));
+  const loadedRef = useRef(false);
 
-  // Equalizer animation
-  const [eqAnim] = useState(() => new Animated.Value(0));
-
-  // Slider drag animation
-  const [dragX] = useState(() => new Animated.Value(0));
-
-  // Floating note animations
-  const [note1Y] = useState(() => new Animated.Value(0));
-  const [note2Y] = useState(() => new Animated.Value(0));
-  const [note3Y] = useState(() => new Animated.Value(0));
-
-  // Star twinkling animation
-  const [starOpacity] = useState(() => new Animated.Value(0.4));
-
-
-useEffect(() => {
-  if (!isFocused) return;
-
-  // Keep all your existing animation code here.
-    // Equalizer loop
-    const eqLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(eqAnim, {
-          toValue: 1,
-          duration: 450,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: false,
-        }),
-        Animated.timing(eqAnim, {
-          toValue: 0,
-          duration: 450,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: false,
-        }),
-      ])
-    );
-    eqLoop.start();
-
-
-    // Floating notes
-    const createNoteAnim = (val, dur) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(val, {
-            toValue: -120,
-            duration: dur,
-            easing: Easing.linear,
-            useNativeDriver: true,
-          }),
-          Animated.timing(val, {
-            toValue: 0,
-            duration: 0,
-            useNativeDriver: true,
-          }),
-        ])
-      );
-
-
-    const anim1 = createNoteAnim(note1Y, 7000);
-    const anim2 = createNoteAnim(note2Y, 9000);
-    const anim3 = createNoteAnim(note3Y, 6000);
-
-    anim1.start();
-    anim2.start();
-    anim3.start();
-
-
-    // Star twinkle
-    const starLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(starOpacity, {
-          toValue: 0.9,
-          duration: 1500,
-          useNativeDriver: true,
-        }),
-        Animated.timing(starOpacity, {
-          toValue: 0.3,
-          duration: 1500,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    starLoop.start();
-
-
-   return () => {
-  eqLoop.stop();
-  anim1.stop();
-  anim2.stop();
-  anim3.stop();
-  starLoop.stop();
-};
-}, [isFocused, eqAnim, note1Y, note2Y, note3Y, starOpacity]);
-
-
-  // PanResponder for Slide to Get Started
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-
-        onPanResponderMove: (_, gestureState) => {
-          const newX = Math.max(0, Math.min(gestureState.dx, MAX_DRAG));
-          dragX.setValue(newX);
-        },
-
-        onPanResponderRelease: (_, gestureState) => {
-          if (gestureState.dx >= MAX_DRAG * 0.7) {
-            Animated.timing(dragX, {
-              toValue: MAX_DRAG,
-              duration: 150,
-              useNativeDriver: false,
-            }).start(() => {
-              onGetStarted();
-            });
-          } else {
-            Animated.spring(dragX, {
-              toValue: 0,
-              friction: 5,
-              tension: 40,
-              useNativeDriver: false,
-            }).start();
-          }
-        },
-      }),
-    [dragX, onGetStarted]
+  const remoteOk = !!uri && failedUri !== uri;
+  const source = useMemo(
+    () => (remoteOk ? { uri } : fallback),
+    [remoteOk, uri, fallback]
   );
 
+  // New picture: restart fade, and give the remote image a deadline
+  useEffect(() => {
+    fade.setValue(0);
+    loadedRef.current = false;
+    if (!remoteOk) return;
+    const t = setTimeout(() => {
+      if (!loadedRef.current) setFailedUri(uri);
+    }, REMOTE_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [source, fade, remoteOk, uri]);
 
-  // Equalizer spectrum heights
-  const bars = [
-    18, 32, 45, 60, 48, 55, 38, 52, 64, 42, 58, 36, 48, 30, 22,
-  ];
+  const onLoad = useCallback(() => {
+    loadedRef.current = true;
+    Animated.timing(fade, {
+      toValue: 1,
+      duration: 450,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [fade]);
 
-
-  // Static twinkling stars positions
-  const stars = [
-    { x: 30, y: 120, s: 2 },
-    { x: 80, y: 80, s: 1.5 },
-    { x: 150, y: 150, s: 2.2 },
-    { x: 220, y: 90, s: 1.8 },
-    { x: 300, y: 140, s: 2 },
-    { x: 70, y: 220, s: 1.6 },
-    { x: 290, y: 260, s: 2.4 },
-    { x: 320, y: 340, s: 1.5 },
-    { x: 40, y: 380, s: 2 },
-  ];
-
+  const onError = useCallback(() => {
+    if (uri) setFailedUri(uri);
+  }, [uri]);
 
   return (
-    <View className="relative flex-1 overflow-hidden bg-[#05040f]">
-      {/* Background Aurora Orbs */}
-      <View
-        pointerEvents="none"
-        className="absolute -left-20 top-[140px] h-[280px] w-[280px] rounded-full bg-[#6b45cd]/45"
+    <View
+      pointerEvents="none"
+      renderToHardwareTextureAndroid
+      style={{ position: 'absolute', top: 0, left: 0, width: SW, height: HERO_H }}
+    >
+      <Animated.Image
+        source={source}
+        style={{ width: SW, height: HERO_H, opacity: fade }}
+        resizeMode="cover"
+        fadeDuration={0}
+        onLoad={onLoad}
+        onError={onError}
+        accessibilityIgnoresInvertColors
       />
+      <Svg width={SW} height={HERO_H} style={StyleSheet.absoluteFill}>
+        <Defs>
+          <LinearGradient id="mk-fade" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#0b0b0c" stopOpacity="0" />
+            <Stop offset="0.36" stopColor="#0b0b0c" stopOpacity="0" />
+            <Stop offset="0.64" stopColor="#0b0b0c" stopOpacity="0.6" />
+            <Stop offset="0.88" stopColor="#0b0b0c" stopOpacity="1" />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width={SW} height={HERO_H} fill="url(#mk-fade)" />
+      </Svg>
+    </View>
+  );
+});
 
-      <View
-        pointerEvents="none"
-        className="absolute -right-20 top-[360px] h-[260px] w-[260px] rounded-full bg-[#2ad0ff]/35"
-      />
-
-      <View
-        pointerEvents="none"
-        className="absolute -top-10 left-10 h-[240px] w-[240px] rounded-full bg-[#294dce]/30"
-      />
-
-      {/* Twinkling stars */}
-      {stars.map((st, i) => (
+// ─────────────────────────────────────────────────────────────
+// Equalizer: ONE shared native-driven value drives all 36 bars
+// (transform only, so nothing runs on the JS thread or triggers layout)
+// ─────────────────────────────────────────────────────────────
+const Equalizer = memo(function Equalizer({ progress }) {
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      className="h-[30px] flex-row items-end justify-between"
+    >
+      {EQ_BARS.map((b, i) => (
         <Animated.View
           key={i}
-          className="absolute bg-white"
+          className={`w-[2px] rounded-full ${
+            b.accent ? 'bg-[#ff4b2b]' : 'bg-[#f4f1ec]/40'
+          }`}
           style={{
-            left: st.x,
-            top: st.y + insets.top,
-            width: st.s,
-            height: st.s,
-            borderRadius: st.s / 2,
-            opacity: starOpacity,
+            height: b.h,
+            transform: [
+              {
+                translateY: progress.interpolate({
+                  inputRange: EQ_INPUT,
+                  outputRange: b.shift,
+                }),
+              },
+              {
+                scaleY: progress.interpolate({
+                  inputRange: EQ_INPUT,
+                  outputRange: b.scale,
+                }),
+              },
+            ],
           }}
         />
       ))}
+    </View>
+  );
+});
 
-      {/* Brand Header */}
-      <View
-        className="absolute inset-x-0 items-center"
-        style={{ top: insets.top + 26 }}
+// ─────────────────────────────────────────────────────────────
+// Slide to get started (fully native-driven)
+// ─────────────────────────────────────────────────────────────
+const SlideToStart = memo(function SlideToStart({ onComplete, active }) {
+  const [dragX] = useState(() => new Animated.Value(0));
+  const doneRef = useRef(false);
+  const onCompleteRef = useRef(onComplete);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
+  // Reset whenever the screen comes back into focus
+  useEffect(() => {
+    if (active) {
+      doneRef.current = false;
+      dragX.setValue(0);
+    }
+  }, [active, dragX]);
+
+  const complete = useCallback(() => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    Animated.timing(dragX, {
+      toValue: MAX_DRAG,
+      duration: 120,
+      useNativeDriver: true,
+    }).start(() => onCompleteRef.current?.());
+  }, [dragX]);
+
+  const springBack = useCallback(() => {
+    Animated.spring(dragX, {
+      toValue: 0,
+      friction: 6,
+      tension: 50,
+      useNativeDriver: true,
+    }).start();
+  }, [dragX]);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => !doneRef.current,
+        onMoveShouldSetPanResponder: () => !doneRef.current,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderMove: (_, g) =>
+          dragX.setValue(Math.max(0, Math.min(g.dx, MAX_DRAG))),
+        onPanResponderRelease: (_, g) => {
+          if (g.dx >= MAX_DRAG * 0.7) complete();
+          else springBack();
+        },
+        onPanResponderTerminate: springBack,
+      }),
+    [dragX, complete, springBack]
+  );
+
+  const fillX = useMemo(
+    () =>
+      dragX.interpolate({
+        inputRange: [0, MAX_DRAG],
+        outputRange: [FILL_X0, FILL_X0 + MAX_DRAG],
+        extrapolate: 'clamp',
+      }),
+    [dragX]
+  );
+
+  const labelOpacity = useMemo(
+    () =>
+      dragX.interpolate({
+        inputRange: [0, MAX_DRAG * 0.5],
+        outputRange: [1, 0],
+        extrapolate: 'clamp',
+      }),
+    [dragX]
+  );
+
+  return (
+    <View
+      className="overflow-hidden border border-[#2a2a2f] bg-[#151518]"
+      style={{
+        width: SLIDER_W,
+        height: SLIDER_H,
+        borderRadius: SLIDER_H / 2,
+        justifyContent: 'center',
+      }}
+    >
+      {/* Accent fill (translateX only, no width animation) */}
+      <Animated.View
+        pointerEvents="none"
+        className="absolute inset-y-0 left-0 bg-[#ff4b2b]/90"
+        style={{
+          width: SLIDER_W,
+          borderRadius: SLIDER_H / 2,
+          transform: [{ translateX: fillX }],
+        }}
+      />
+
+      <Animated.Text
+        pointerEvents="none"
+        className="pl-[44px] text-center text-[11px] font-semibold uppercase tracking-[2.4px] text-[#f4f1ec]"
+        style={{ opacity: labelOpacity }}
       >
-        <View className="mb-3 flex-row items-center rounded-full border border-white/15 bg-white/[0.07] px-3 py-1.5">
-          <View className="mr-2 h-1.5 w-1.5 rounded-full bg-[#2ad0ff]" />
-          <Text className="text-[9px] font-bold uppercase tracking-[3px] text-[#e8e2ff]/80">
-            Music for every mood
-          </Text>
-        </View>
+        Slide to get started
+      </Animated.Text>
 
-        <Text className="text-center text-[44px] font-black tracking-[10px] text-[#f4efff]">
+      {/* Knob */}
+      <Animated.View
+        {...panResponder.panHandlers}
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel="Slide to get started"
+        accessibilityHint="Double tap to continue"
+        accessibilityActions={[{ name: 'activate' }]}
+        onAccessibilityAction={(e) => {
+          if (e.nativeEvent.actionName === 'activate') complete();
+        }}
+        className="absolute items-center justify-center rounded-full bg-[#f4f1ec]"
+        style={{
+          left: KNOB_INSET,
+          top: KNOB_INSET,
+          width: KNOB,
+          height: KNOB,
+          transform: [{ translateX: dragX }],
+        }}
+      >
+        <Svg
+          width={20}
+          height={20}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#0b0b0c"
+          strokeWidth={2.4}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <Path d="M5 12h14M13 6l6 6-6 6" />
+        </Svg>
+      </Animated.View>
+    </View>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────
+// Screen
+// ─────────────────────────────────────────────────────────────
+export default function WelcomeScreen({ onGetStarted }) {
+  const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
+  const appActive = useAppActive();
+  const reduceMotion = useReduceMotion();
+  const bg = useWelcomeBackground(); // rotates every launch after 1h+ away
+
+  // Animate only while the screen is focused AND the app is in the foreground
+  const shouldAnimate = isFocused && appActive && !reduceMotion;
+
+  const [eqProgress] = useState(() => new Animated.Value(0));
+
+  useEffect(() => {
+    if (!shouldAnimate) return;
+    eqProgress.setValue(0);
+    const loop = Animated.loop(
+      Animated.timing(eqProgress, {
+        toValue: 1,
+        duration: 1600,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [shouldAnimate, eqProgress]);
+
+  return (
+    <View className="flex-1 overflow-hidden bg-[#0b0b0c]">
+      {bg ? <Hero uri={bg.uri} fallback={bg.fallback} /> : null}
+
+      {/* Eyebrow */}
+      <View
+        pointerEvents="none"
+        className="absolute left-7 flex-row items-center"
+        style={{ top: insets.top + 16 }}
+      >
+        <View className="mr-2.5 h-[7px] w-[7px] rounded-full bg-[#ff4b2b]" />
+        <Text className="text-[10px] font-semibold uppercase tracking-[2.8px] text-[#141413]">
+          Music for every mood
+        </Text>
+      </View>
+
+      {/* Bottom block */}
+      <View
+        className="absolute inset-x-0 bottom-0 px-7"
+        style={{ paddingBottom: Math.max(insets.bottom, 16) + 24 }}
+      >
+        <Text
+          allowFontScaling={false}
+          className="font-extrabold text-[#f4f1ec]"
+          style={{
+            fontSize: WORDMARK_SIZE,
+            lineHeight: Math.round(WORDMARK_SIZE * 1.05),
+            letterSpacing: WORDMARK_SIZE * 0.12,
+          }}
+        >
           MUSIKA
         </Text>
-
-        <Text className="mt-1.5 text-center text-[10px] font-bold uppercase tracking-[4px] text-[#e8e2ff]/70">
+        <Text className="mt-3 text-[10px] font-medium uppercase tracking-[3.2px] text-[#b4aea6]">
           Make your life more live
         </Text>
-      </View>
 
-      {/* Hero: halo rings + vinyl + live equalizer */}
-      <View
-        pointerEvents="none"
-        className="absolute inset-x-0 items-center"
-        style={{ top: insets.top + 150 }}
-      >
-        <View
-          className="items-center justify-center"
-          style={{ width: DISC_SIZE + 90, height: DISC_SIZE + 90 }}
+        <View className="mt-6">
+          <Equalizer progress={eqProgress} />
+        </View>
+
+        <Text
+          accessibilityRole="header"
+          className="mt-[30px] text-[34px] font-semibold tracking-tight text-[#f4f1ec]"
         >
-          {/* Center Circular Glow Halo */}
-          <View
-            className="absolute rounded-full bg-[#7b3cff]/25"
-            style={{ width: DISC_SIZE + 70, height: DISC_SIZE + 70 }}
-          />
-          <View
-            className="absolute rounded-full border border-white/10"
-            style={{ width: DISC_SIZE + 90, height: DISC_SIZE + 90 }}
-          />
-          <View
-            className="absolute rounded-full border border-white/10"
-            style={{ width: DISC_SIZE + 44, height: DISC_SIZE + 44 }}
-          />
-
-          {/* Girl with hoodie & headphones illustration */}
-          {/* <Image
-            source={require('../../assets/images/welcome-hero.jpg')}
-            style={{ width: DISC_SIZE, height: DISC_SIZE }}
-            resizeMode="contain"
-          /> */}
-
-          <View
-            style={{
-              shadowColor: '#7b3cff',
-              shadowOffset: { width: 0, height: 16 },
-              shadowOpacity: 0.7,
-              shadowRadius: 28,
-              elevation: 18,
-            }}
-          >
-            <VinylDisc size={DISC_SIZE} />
-          </View>
-        </View>
-
-        {/* Live Equalizer Spectrum */}
-        <View className="-mt-2 h-16 flex-row items-end justify-center gap-1.5">
-          {bars.map((h, idx) => (
-            <Animated.View
-              key={idx}
-              className={`w-1 rounded-full ${idx % 3 === 0 ? 'bg-[#8a5cff]' : 'bg-[#2ad0ff]'}`}
-              style={{
-                height: eqAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [h * 0.35, h],
-                }),
-              }}
-            />
-          ))}
-        </View>
-      </View>
-
-      {/* Floating music notes */}
-      <Animated.View
-        pointerEvents="none"
-        className="absolute rounded-full bg-white/[0.07] p-2 opacity-90"
-        style={{
-          left: 24,
-          bottom: SH * 0.4,
-          transform: [{ translateY: note1Y }],
-        }}
-      ><Music size={18} color="#2ad0ff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-      </Animated.View>
-
-      <Animated.View
-        pointerEvents="none"
-        className="absolute rounded-full bg-white/[0.07] p-2.5 opacity-90"
-        style={{
-          right: 26,
-          bottom: SH * 0.46,
-          transform: [{ translateY: note2Y }],
-        }}
-      ><Music size={22} color="#8a5cff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-      </Animated.View>
-
-      <Animated.View
-        pointerEvents="none"
-        className="absolute rounded-full bg-white/[0.07] p-1.5 opacity-90"
-        style={{
-          left: SW * 0.2,
-          bottom: SH * 0.52,
-          transform: [{ translateY: note3Y }],
-        }}
-      ><Music size={16} color="#2ad0ff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-      </Animated.View>
-
-      {/* Bottom glass panel with CTA */}
-      <View
-        className="absolute inset-x-0 bottom-0 items-center rounded-t-[36px] border border-b-0 border-white/10 bg-[#0d0a22]/90 px-6 pt-3"
-        style={{ paddingBottom: insets.bottom + 24 }}
-      >
-        <View className="mb-5 h-1 w-10 rounded-full bg-white/20" />
-
-        <Text className="text-center text-[30px] font-extrabold tracking-tight text-[#f4efff]">
           Feel every beat.
         </Text>
-        <Text className="mb-6 mt-1.5 text-center text-[13px] text-[#cfc6ff]/70">
+        <Text className="mt-2 text-[14px] text-[#b4aea6]">
           Millions of songs. Zero limits.
         </Text>
 
-        {/* CTA: Slide to Get Started */}
-        <View
-          className="relative h-[60px] justify-center overflow-hidden rounded-[30px] border border-white/20 bg-white/[0.08]"
-          style={{ width: SLIDER_WIDTH }}
-        >
-          {/* Animated gradient fill */}
-          <Animated.View
-            className="absolute inset-y-0 left-0 rounded-[30px] bg-[#6b45cd]"
-            style={{
-              width: Animated.add(
-                dragX,
-                new Animated.Value(KNOB_SIZE + 10)
-              ),
-            }}
-          />
-
-          {/* Slider label */}
-          <Text className="pl-[38px] text-center text-[12px] font-bold uppercase tracking-[2px] text-[#f4efff]">
-            Slide to get started
-          </Text>
-
-          {/* Hint chevrons */}
-          <Text className="absolute right-5 text-[18px] font-bold tracking-[-2px] text-white/40">
-            ›››
-          </Text>
-
-          {/* Draggable Knob */}
-          <Animated.View
-            className="absolute left-[5px] top-[5px] flex h-12 w-12 items-center justify-center rounded-full bg-white"
-            style={{
-              transform: [{ translateX: dragX }],
-              shadowColor: '#6b45cd',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.6,
-              shadowRadius: 10,
-              elevation: 8,
-            }}
-            {...panResponder.panHandlers}
-          >
-            <TouchableOpacity
-              onPress={() => onGetStarted()}
-              activeOpacity={0.85}
-              className="h-full w-full items-center justify-center"
-            >
-              <Svg
-                width={20}
-                height={20}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#3b2fb8"
-                strokeWidth={2.6}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <Path d="M5 12h14M13 6l6 6-6 6" />
-              </Svg>
-            </TouchableOpacity>
-          </Animated.View>
+        <View className="mt-[30px]">
+          <SlideToStart onComplete={onGetStarted} active={isFocused} />
         </View>
       </View>
     </View>
