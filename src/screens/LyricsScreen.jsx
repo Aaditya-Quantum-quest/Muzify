@@ -43,7 +43,7 @@ import Animated, {
   cancelAnimation,
 } from "react-native-reanimated";
 
-import { useIsFocused } from "@react-navigation/native";
+import { useIsFocused } from "expo-router";
 
 import { cssInterop } from "nativewind";
 
@@ -2086,8 +2086,8 @@ function NowPlaying({ onBack }) {
 }
 
 /**
- * Expo Router screens are backed by React Navigation.
- * useIsFocused() is the supported focus hook; returning null unmounts the
+ * Expo Router screens expose useIsFocused() for route focus.
+ * Returning null unmounts the
  * expensive NowPlaying tree when another route is on top.
  */
 export default function LyricsScreen({ onBack = () => {} }) {

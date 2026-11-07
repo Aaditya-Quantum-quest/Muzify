@@ -19,7 +19,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { useIsFocused } from "@react-navigation/native";
+import { useIsFocused } from "expo-router";
 import Animated, {
   Easing,
   cancelAnimation,
