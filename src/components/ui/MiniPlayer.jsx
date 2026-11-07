@@ -5,13 +5,33 @@
  * mini player → 5 s without a touch → morphs back into the orb → tap orb → mini
  * player → tap song info → /player.
  *
- * Needs: react-native-reanimated (3.x), react-native-svg, expo-router.
+ * Needs: react-native-reanimated (>= 3.5), react-native-svg, expo-router.
  * Plain StyleSheet (no NativeWind). All animation runs on the UI thread.
+ *
+ * Fixes vs. the previous version
+ *  1. Animations no longer die when the phone has "Remove animations" / Battery
+ *     Saver on: every withTiming uses ReduceMotion.Never and the wave clock is
+ *     not gated by useReducedMotion (opt back in with respectReducedMotion).
+ *  2. A song that is already playing when the component mounts (or whose track
+ *     loads after `playing` flips true) now also morphs the orb into the bar.
+ *  3. Player-context field names are read defensively (track/currentTrack,
+ *     playing/isPlaying, pos/position, seekTo/seek). Pass `debug` to log state.
+ *  4. Lighter per-frame work (48-point blobs, 4px wave step).
+ *
+ * Size & position props
+ *  - scale        1 = original. 0.8 shrinks orb + bar + halo together.
+ *  - side         "right" (default) | "left" — screen edge it is pinned to.
+ *  - marginLeft / marginRight  screen-edge margins in px (default 12 each).
+ *                 The bar fills the space between them (up to BAR_MAX_W).
+ *  - sidePad      legacy shortcut: both margins = sidePad - 4.
+ *  - bottomOffset distance from the screen bottom (default 80).
+ *  - Bar width cap: BAR_MAX_W near the top of the file.
  */
 import React, { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import Animated, {
   Easing,
+  ReduceMotion,
   interpolate,
   interpolateColor,
   useAnimatedProps,
@@ -37,17 +57,26 @@ const ACCENT = "#C6F24E";
 const IVORY = "#F4F1E8";
 const MUTED = "#9A9AA0";
 const TWO_PI = Math.PI * 2;
+const BLOB_PTS = 48;
+const WAVE_STEP = 4;
 const FALLBACK_COLORS = ["#555", "#222", "#fff", "#888", "#111"];
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
+/** withTiming config that ignores the system "reduce motion" switch. */
+const timing = (duration, easing = EASE, instant = false) => ({
+  duration: instant ? 0 : duration,
+  easing,
+  reduceMotion: ReduceMotion.Never,
+});
+
 /* ───────────── worklet helpers (run on the UI thread) ───────────── */
 function blobPath(cx, cy, R, A, p, sd) {
   "worklet";
   let d = "";
-  for (let i = 0; i < 64; i++) {
-    const t = (i / 64) * TWO_PI;
+  for (let i = 0; i < BLOB_PTS; i++) {
+    const t = (i / BLOB_PTS) * TWO_PI;
     const r =
       R +
       A *
@@ -66,7 +95,7 @@ function waveY(x, mid, A, p) {
 
 function wavePath(x0, x1, mid, A, p) {
   "worklet";
-  const n = Math.max(1, Math.ceil((x1 - x0) / 3));
+  const n = Math.max(1, Math.ceil((x1 - x0) / WAVE_STEP));
   let d = "";
   for (let i = 0; i <= n; i++) {
     const x = x0 + ((x1 - x0) * i) / n;
@@ -203,28 +232,51 @@ const OrbFace = memo(function OrbFace({ playing }) {
 
 /* ───────────── main component ───────────── */
 export default function MiniPlayerBar({
-  sidePad = 16,
+  sidePad = 16, // legacy: sets both margins to sidePad - 4 unless marginLeft/marginRight are given
+  marginLeft = sidePad - 4, // px of space between the screen's left edge and the orb/bar
+  marginRight = sidePad - -6, // px of space between the screen's right edge and the orb/bar
   insets = { top: 0, bottom: 0, left: 0, right: 0 },
   router: routerProp = null,
   AvatarArt = null,
   IconShuffle = null,
   IconPlay = null,
   IconPause = null,
+  respectReducedMotion = false, // true → honour the OS "remove animations" setting
+  debug = false, // true → console.log player state on every change
+  scale = 0.85, // overall size: 1 = original, 0.75 = 25% smaller (orb, bar and halo together)
+  side = "right", // "right" | "left" — which screen edge the orb/bar is pinned to
+  bottomOffset = 50, // px above the screen bottom (raise it to clear your tab bar)
 }) {
   const hookRouter = useRouter();
   const router = routerProp ?? hookRouter;
 
-  const player = usePlayer();
-  const { track, playing, togglePlay, shuffle, toggleShuffle, pos } = player;
+  /* player state — field names read defensively */
+  const player = usePlayer() ?? {};
+  const track = player.track ?? player.currentTrack ?? null;
+  const playing = !!(player.playing ?? player.isPlaying);
+  const togglePlay = player.togglePlay ?? player.togglePlayPause ?? player.toggle;
+  const shuffle = !!player.shuffle;
+  const toggleShuffle = player.toggleShuffle;
+  const pos = Number(player.pos ?? player.position ?? 0) || 0; // seconds
   const seekTo = player.seekTo ?? player.seek; // optional: (seconds) => void
 
-  const reduceMotion = useReducedMotion();
+  const systemReduce = useReducedMotion();
+  const reduceMotion = respectReducedMotion && systemReduce;
   const { width: screenW } = useWindowDimensions();
-  const barW = Math.min(BAR_MAX_W, screenW - 2 * (sidePad - 4));
+  // margins are measured on screen, so divide by scale to get the layout width
+  const barW = Math.min(BAR_MAX_W, (screenW - marginLeft - marginRight) / scale);
   const innerW = barW - 2 - 28; // minus border and horizontal padding
 
+  /* layout: a fixed-size frame that is scaled about its centre, then shifted so
+     the orb/bar keeps its corner pinned to the chosen screen edge and height */
+  const edge = side === "left" ? "left" : "right";
+  const frameW = barW;
+  const frameH = BAR_H + 16; // bar height + the box's bottom margin
+  const shiftX = ((frameW * (1 - scale)) / 2) * (edge === "left" ? -1 : 1);
+  const shiftY = (frameH * (1 - scale)) / 2;
+
   const hasTrack = !!track;
-  const duration = Number(track?.duration) > 0 ? Number(track.duration) : 0;
+  const duration = Number(track?.duration) > 0 ? Number(track.duration) : 0; // seconds
   const frac = duration ? Math.min(1, Math.max(0, pos / duration)) : 0;
   const trackKey = track?.id ?? track?.title ?? null;
 
@@ -237,30 +289,38 @@ export default function MiniPlayerBar({
   const energy = useSharedValue(0);
   const progress = useSharedValue(0);
 
+  useEffect(() => {
+    if (debug) console.log("[MiniPlayerBar]", { mode, hasTrack, playing, pos, duration });
+  }, [debug, mode, hasTrack, playing, pos, duration]);
+
   /* morph bar <-> orb */
   useEffect(() => {
-    morph.value = withTiming(mode === "orb" ? 1 : 0, { duration: reduceMotion ? 0 : MORPH_MS, easing: EASE });
+    morph.value = withTiming(mode === "orb" ? 1 : 0, timing(MORPH_MS, EASE, reduceMotion));
   }, [mode, reduceMotion, morph]);
 
   /* wave / blob clock — only ticks while a song is playing */
   const frame = useFrameCallback((info) => {
     "worklet";
-    const dt = Math.min(info.timeSincePreviousFrame ?? 16, 50);
+    const dt = Math.min(info.timeSincePreviousFrame || 16, 50);
     phase.value += (dt / 1000) * 2;
   }, false);
   useEffect(() => {
     frame.setActive(playing && hasTrack && !reduceMotion);
+    return () => frame.setActive(false);
   }, [playing, hasTrack, reduceMotion, frame]);
 
   /* energy: lively when playing, calm when paused, flat with no track */
   useEffect(() => {
-    energy.value = withTiming(!hasTrack ? 0 : playing ? 1 : 0.25, { duration: 450 });
-  }, [playing, hasTrack, energy]);
+    energy.value = withTiming(
+      !hasTrack ? 0 : playing ? 1 : 0.25,
+      timing(450, Easing.inOut(Easing.quad), reduceMotion)
+    );
+  }, [playing, hasTrack, reduceMotion, energy]);
 
   /* progress glides between position updates */
   useEffect(() => {
-    progress.value = withTiming(frac, { duration: 450, easing: Easing.linear });
-  }, [frac, progress]);
+    progress.value = withTiming(frac, timing(450, Easing.linear, reduceMotion));
+  }, [frac, reduceMotion, progress]);
 
   /* idle timer: bar → orb after IDLE_MS without a touch */
   const idleRef = useRef(null);
@@ -281,12 +341,15 @@ export default function MiniPlayerBar({
     if (mode === "bar") armIdle();
   }, [mode, armIdle]);
 
-  /* a song starts (or changes) → orb becomes the bar */
-  const prev = useRef({ key: trackKey, playing });
+  /* a song starts (or changes) → orb becomes the bar.
+     prev starts as "nothing playing", so a song that is already playing on
+     mount, or a track that loads after `playing` flips true, also triggers it. */
+  const prev = useRef({ key: null, active: false });
   useEffect(() => {
     const p = prev.current;
-    if (playing && hasTrack && (!p.playing || p.key !== trackKey)) setMode("bar");
-    prev.current = { key: trackKey, playing };
+    const active = playing && hasTrack;
+    if (active && (!p.active || p.key !== trackKey)) setMode("bar");
+    prev.current = { key: trackKey, active };
   }, [playing, trackKey, hasTrack]);
 
   const expand = useCallback(() => setMode("bar"), []);
@@ -330,13 +393,20 @@ export default function MiniPlayerBar({
   return (
     <View
       pointerEvents="box-none"
-      style={[styles.root, { paddingHorizontal: sidePad - 4, paddingBottom: 14 + insets.bottom }]}
+      style={[
+        styles.root,
+        {
+          width: frameW,
+          height: frameH,
+          bottom: bottomOffset + 14 + insets.bottom,
+          [edge]: edge === "left" ? marginLeft : marginRight,
+          alignItems: edge === "left" ? "flex-start" : "flex-end",
+          transform: [{ translateX: shiftX }, { translateY: shiftY }, { scale }],
+        },
+      ]}
     >
       {/* liquid halo — sits behind the orb, never blocks touches */}
-      <Animated.View
-        pointerEvents="none"
-        style={[styles.halo, { right: sidePad - 26, bottom: 8 + insets.bottom }, haloStyle]}
-      >
+      <Animated.View pointerEvents="none" style={[styles.halo, { [edge]: -22, bottom: -6 }, haloStyle]}>
         <Halo morph={morph} phase={phase} energy={energy} />
       </Animated.View>
 
@@ -345,7 +415,7 @@ export default function MiniPlayerBar({
         {/* ── bar layer ── */}
         <Animated.View
           pointerEvents={mode === "bar" ? "auto" : "none"}
-          style={[styles.barLayer, { width: barW - 2 }, barLayerStyle]}
+          style={[styles.barLayer, { width: barW - 2, [edge]: 0 }, barLayerStyle]}
         >
           <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
             <Defs>
@@ -410,7 +480,7 @@ export default function MiniPlayerBar({
         </Animated.View>
 
         {/* ── orb layer ── */}
-        <Animated.View pointerEvents={mode === "orb" ? "auto" : "none"} style={[styles.orbLayer, orbLayerStyle]}>
+        <Animated.View pointerEvents={mode === "orb" ? "auto" : "none"} style={[styles.orbLayer, { [edge]: 0 }, orbLayerStyle]}>
           <Pressable
             onPress={expand}
             accessibilityRole="button"
@@ -431,11 +501,11 @@ function fmt(s) {
 }
 
 const styles = StyleSheet.create({
-  root: { position: "absolute", left: 0, right: 0, bottom: 80, alignItems: "flex-end" },
+  root: { position: "absolute", justifyContent: "flex-end" },
   halo: { position: "absolute", width: 128, height: 128 },
   box: { marginBottom: 16, overflow: "hidden", borderStyle: "solid" },
-  barLayer: { position: "absolute", right: 0, top: 0, height: 90, paddingTop: 14, paddingHorizontal: 14 },
-  orbLayer: { position: "absolute", right: 0, bottom: 0, width: 80, height: 80 },
+  barLayer: { position: "absolute", top: 0, height: 90, paddingTop: 14, paddingHorizontal: 14 },
+  orbLayer: { position: "absolute", bottom: 0, width: 80, height: 80 },
   row: { flexDirection: "row", alignItems: "center", height: 52, gap: 12 },
   info: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", height: 52, gap: 12 },
   art: { width: 52, height: 52, borderRadius: 15, overflow: "hidden", backgroundColor: "#1C1C1E" },

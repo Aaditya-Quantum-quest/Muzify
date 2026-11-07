@@ -909,7 +909,7 @@ function SongRow({ item, cur, playing, onPlay, onLongPress, isScreenActive = tru
     <TouchableOpacity
       onPress={onPlay}
       onLongPress={onLongPress}
-      delayLongPress={350}
+      delayLongPress={1}
       activeOpacity={0.8}
       className="overflow-hidden rounded-3xl border"
       style={{ borderColor: cur ? C.limeBorder : "transparent" }}
@@ -924,7 +924,7 @@ function SongRow({ item, cur, playing, onPlay, onLongPress, isScreenActive = tru
         />
       )}
 
-      <View className="flex-row items-center p-2.5">
+      <View className="flex-row items-center py-2">
         <SongArt uri={item.artwork} cur={cur} playing={playing} isScreenActive={isScreenActive} />
 
         <View className="ml-3.5 min-w-0 flex-1">
@@ -944,7 +944,7 @@ function SongRow({ item, cur, playing, onPlay, onLongPress, isScreenActive = tru
             {item.by}
           </Text>
 
-          {item.album && item.album !== "Unknown Album" ? (
+          {/* {item.album && item.album !== "Unknown Album" ? (
             <Text
               numberOfLines={1}
               className="mt-0.5 text-[11px]"
@@ -952,7 +952,7 @@ function SongRow({ item, cur, playing, onPlay, onLongPress, isScreenActive = tru
             >
               {item.album}
             </Text>
-          ) : null}
+          ) : null} */}
 
           <View className="mt-1.5 flex-row items-center">
             <Music2 size={12} color={metaColor} strokeWidth={2} />
