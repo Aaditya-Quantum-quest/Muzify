@@ -168,7 +168,11 @@ export default function BottomBar({ state, descriptors, navigation }) {
   const placed = useRef(false);
 
   const bottomPadding = Math.max(insets.bottom, 16);
-  const count = state.routes.length;
+  const visibleRoutes = state.routes.filter((route) => {
+    const href = descriptors[route.key]?.options?.href;
+    return route.name !== "Player" && href !== null;
+  });
+  const count = visibleRoutes.length;
 
   // The bar is fixed-size now: it only be as wide as its tabs.
   const tabW = TAB_W;
@@ -252,7 +256,10 @@ export default function BottomBar({ state, descriptors, navigation }) {
   );
 
   useEffect(() => {
-    const target = PAD + state.index * tabW;
+    const visibleIndex = visibleRoutes.findIndex(
+      (route) => route.key === state.routes[state.index]?.key,
+    );
+    const target = PAD + Math.max(0, visibleIndex) * tabW;
 
     if (!placed.current) {
       indicatorX.value = target;
@@ -263,7 +270,7 @@ export default function BottomBar({ state, descriptors, navigation }) {
         easing: Easing.bezier(0.22, 1, 0.36, 1),
       });
     }
-  }, [state.index, tabW, indicatorX]);
+  }, [state.index, state.routes, tabW, indicatorX, visibleRoutes.length]);
 
   const indicatorStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: indicatorX.value }],
@@ -356,8 +363,8 @@ export default function BottomBar({ state, descriptors, navigation }) {
         />
 
         {/* Navigation buttons */}
-        {state.routes.map((route, index) => {
-          const focused = state.index === index;
+        {visibleRoutes.map((route) => {
+          const focused = state.routes[state.index]?.key === route.key;
           const { options } = descriptors[route.key];
 
           const label =

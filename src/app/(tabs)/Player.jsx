@@ -1,1 +1,1 @@
-export { default } from '../(public)/artists/artists.jsx';
+export { default } from "../../screens/PlayerPager";
