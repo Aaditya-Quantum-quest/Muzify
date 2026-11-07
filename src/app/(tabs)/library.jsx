@@ -9,12 +9,10 @@ import {
   Image,
   Animated,
   Easing,
-  StyleSheet,
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, useIsFocused } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
 import {
   Search,
   Grid,
@@ -26,7 +24,6 @@ import {
   MoreVertical,
   ArrowLeft,
   Music,
-  Music2,
   Trash2,
   Share2,
   Info,
@@ -44,6 +41,8 @@ import {
   parseMetadataFromFilename,
 } from "../../services/folderScanner.js";
 import { usePlayer } from "../../context/player-context";
+import { MixSongItem, songToMixTrack } from "../../components/subComponents/MixSongList";
+import { useSharedValue } from "react-native-reanimated";
 
 /* ───────────── palette (was constants/design) ───────────── */
 const C = {
@@ -516,8 +515,19 @@ export default function LibraryScreen() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [shuffled, setShuffled] = useState(false);
-  const { playSongs, togglePlay, track, playing } = usePlayer();
+  const { playSongs, togglePlay, track, playing, pos, seekTo } = usePlayer();
   const cur = track?.id;
+  const mixPosition = useSharedValue(0);
+  const [firstMount, setFirstMount] = useState(true);
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setFirstMount(false));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  useEffect(() => {
+    mixPosition.value = Number(pos) || 0;
+  }, [pos, mixPosition]);
 
   // Long-press context menu state
   const [ctxItem, setCtxItem] = useState(null);
@@ -736,7 +746,7 @@ export default function LibraryScreen() {
           gridView ? { gap: 12, justifyContent: "space-between" } : undefined
         }
         showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => {
+        renderItem={({ item, index }) => {
           const isCur = cur === item.id;
           const isPlaying = isCur && playing;
           const onPlay = () => play(item.id);
@@ -753,16 +763,29 @@ export default function LibraryScreen() {
             );
           }
 
-          return item.isSong ? (
-            <SongRow
-              item={item}
-              cur={isCur}
-              playing={isPlaying}
-              onPlay={onPlay}
-              onLongPress={() => setCtxItem(item)}
-              isScreenActive={isFocused}
-            />
-          ) : (
+          if (item.isSong) {
+            return (
+              <MixSongItem
+                track={songToMixTrack(item.song, {
+                  title: item.title,
+                  artist: item.by,
+                  artwork: item.artwork,
+                  quality: item.format,
+                })}
+                index={index}
+                firstMount={firstMount}
+                expanded={isCur}
+                position={mixPosition}
+                onSelect={() => play(item.id)}
+                onSeek={(seconds) => seekTo(seconds)}
+                onViewDetails={() => router.push("/player")}
+                onLongPress={() => setCtxItem(item)}
+                isScreenActive={isFocused}
+              />
+            );
+          }
+
+          return (
             <ListItem
               item={item}
               cur={isCur}
@@ -866,115 +889,6 @@ export default function LibraryScreen() {
 
       {/* ── mini player dock ── */}
     </View>
-  );
-}
-
-/* artwork tile for a song: cover image, or a music-note placeholder */
-function SongArt({ uri, cur, playing, isScreenActive = true }) {
-  const [failed, setFailed] = useState(false);
-  const showImage = Boolean(uri) && !failed;
-
-  return (
-    <View
-      className="h-16 w-16 overflow-hidden rounded-2xl"
-      style={{ backgroundColor: C.tile }}
-    >
-      {showImage ? (
-        <Image
-          source={{ uri }}
-          resizeMode="cover"
-          onError={() => setFailed(true)}
-          style={StyleSheet.absoluteFill}
-        />
-      ) : (
-        <View className="flex-1 items-center justify-center">
-          <Music size={26} color={C.mut} strokeWidth={1.75} />
-        </View>
-      )}
-
-      {cur && (
-        <View className="absolute inset-0 items-center justify-center bg-black/45">
-          <EqBars active={playing && isScreenActive} />
-        </View>
-      )}
-    </View>
-  );
-}
-
-/* song row: artwork · title · artist · duration | format, lime wash when active */
-function SongRow({ item, cur, playing, onPlay, onLongPress, isScreenActive = true }) {
-  const metaColor = cur ? C.lime : C.mut;
-
-  return (
-    <TouchableOpacity
-      onPress={onPlay}
-      onLongPress={onLongPress}
-      delayLongPress={350}
-      activeOpacity={0.8}
-      className="overflow-hidden rounded-3xl border"
-      style={{ borderColor: cur ? C.limeBorder : "transparent" }}
-    >
-      {cur && (
-        <LinearGradient
-          pointerEvents="none"
-          colors={C.limeGlow}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={StyleSheet.absoluteFill}
-        />
-      )}
-
-      <View className="flex-row items-center p-2.5">
-        <SongArt uri={item.artwork} cur={cur} playing={playing} isScreenActive={isScreenActive} />
-
-        <View className="ml-3.5 min-w-0 flex-1">
-          <Text
-            numberOfLines={1}
-            className="text-base font-semibold"
-            style={{ color: C.text }}
-          >
-            {item.title}
-          </Text>
-
-          <Text
-            numberOfLines={1}
-            className="mt-0.5 text-[13px]"
-            style={{ color: cur ? C.textSoft : C.mut }}
-          >
-            {item.by}
-          </Text>
-
-          {item.album && item.album !== "Unknown Album" ? (
-            <Text
-              numberOfLines={1}
-              className="mt-0.5 text-[11px]"
-              style={{ color: cur ? C.textSoft : C.mut, opacity: 0.8 }}
-            >
-              {item.album}
-            </Text>
-          ) : null}
-
-          <View className="mt-1.5 flex-row items-center">
-            <Music2 size={12} color={metaColor} strokeWidth={2} />
-            <Text className="ml-1 text-xs" style={{ color: metaColor }}>
-              {item.duration}
-            </Text>
-            <View
-              className="mx-2"
-              style={{
-                width: 1,
-                height: 10,
-                backgroundColor: metaColor,
-                opacity: 0.5,
-              }}
-            />
-            <Text className="text-xs" style={{ color: metaColor }}>
-              {item.format}
-            </Text>
-          </View>
-        </View>
-      </View>
-    </TouchableOpacity>
   );
 }
 
