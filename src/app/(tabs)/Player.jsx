@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, PanResponder, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { useIsFocused } from 'expo-router';
@@ -367,3 +368,6 @@ export default function PlayerScreen() {
     </View>
   );
 }
+=======
+export { default } from "../../screens/PlayerPager";
+>>>>>>> 522075d5f104a982b0c920dab7d9051fd2d804ed

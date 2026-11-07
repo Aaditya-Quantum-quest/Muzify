@@ -217,10 +217,11 @@ const Pill = ({ children, active, onPress, className = '' }) => (
 );
 
 /* ───────────────────────── Screen ───────────────────────── */
-export default function AudioSettingsScreen() {
+export default function AudioSettingsScreen({ onBack }) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const isFocused = useIsFocused();
+  const goBack = onBack ?? (() => router.back());
 
   // EQ state
   const [profiles, setProfiles] = useState({ A: [...PRESETS['Audiophile Reference']], B: [...PRESETS['Studio Flat']] });
@@ -305,7 +306,7 @@ export default function AudioSettingsScreen() {
         <View className="h-16 flex-row items-center justify-between px-5">
           <View className="min-w-0 flex-1 flex-row items-center gap-2">
             <Pressable
-              onPress={() => router.back()}
+              onPress={goBack}
               hitSlop={8}
               className="-ml-1 h-11 w-11 items-center justify-center rounded-full active:bg-[#2a2a2d]"
             >

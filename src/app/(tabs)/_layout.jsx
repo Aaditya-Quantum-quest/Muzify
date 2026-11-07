@@ -8,12 +8,16 @@ import MiniPlayer from "../../components/ui/MiniPlayer";
 export default function TabsLayout() {
   return (
     <Tabs
-      tabBar={(props) => (
-        <View>
-          <MiniPlayer />
-          <BottomBar {...props} />
-        </View>
-      )}
+      tabBar={(props) => {
+        const current = props.state.routes[props.state.index]?.name;
+        if (current === "Player") return null;
+        return (
+          <View>
+            <MiniPlayer />
+            <BottomBar {...props} />
+          </View>
+        );
+      }}
       screenOptions={{
         headerShown: false,
         lazy: true,
@@ -24,7 +28,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="library" options={{ title: "Library" }} />
       <Tabs.Screen name="settings" options={{ title: "Settings" }} />
       <Tabs.Screen name="statistics" options={{ title: "Statistics" }} />
-      <Tabs.Screen name="Player" options={{ title: "Player" }} />
+      <Tabs.Screen name="Player" options={{ title: "Player", href: null }} />
     </Tabs>
   );
 }
