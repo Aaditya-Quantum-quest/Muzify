@@ -13,7 +13,6 @@ import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { cssInterop } from "nativewind";
 
-
 import { HEADER_CONTENT } from "../../constants/headerContent";
 
 import InspiredForYou from "../../components/subComponents/InspiredForYou";
@@ -56,11 +55,7 @@ const C = {
   tabActive: "#2a1500",
 };
 
-
-
 const CHIPS = ["All", "New Release", "Trending", "Top Charts", "Podcasts"];
-
-
 
 /* ───────────── Home screen ───────────── */
 
@@ -75,7 +70,6 @@ export default function HomeScreen() {
   const [chip, setChip] = useState(0);
   const [selectedId, setSelectedId] = useState(null);
   const { artists: realArtists } = useArtists({ sort: "songs" });
-
 
   const goArtists = () => router.push("/settings");
 
@@ -160,6 +154,7 @@ export default function HomeScreen() {
             setSelectedId(artist.id);
             router.push(`/artists/${artist.id}`);
           }}
+          onArtistView={(artist) => router.push(`/artists/${artist.id}`)}
           onSeeAll={() => router.push("/artists")}
         />
 
@@ -198,11 +193,8 @@ export default function HomeScreen() {
 
         {/* <NowPlayingWidget /> */}
 
-     <RecentGrid
-  isScreenActive={isVisible}
-/>
+        <RecentGrid isScreenActive={isVisible} />
         <Spectrumcard />
-      
 
         {/* ALL COMPONENTS FINISHED */}
       </ScrollView>

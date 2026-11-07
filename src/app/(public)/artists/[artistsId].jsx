@@ -1,4 +1,16 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+/**
+ * ArtistScreen — "Neon Orchid" redesign (approved preview)
+ *
+ * Same data layer as before: useArtistProfile, getArtistPlayableQueue,
+ * getArtistGradient / getArtistInitials and the global usePlayer().
+ * Only the UI changed. Every picture holder is a curved-corner rounded
+ * square (no circles); real artwork is used when present, otherwise a
+ * gradient + initials placeholder.
+ *
+ * Needs: nativewind (v4 style classes), react-native-svg,
+ *        react-native-safe-area-context, expo-router. No new dependencies.
+ */
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,15 +20,16 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, useIsFocused } from 'expo-router';
 import Svg, {
   Path,
-  Circle,
   Rect,
   Defs,
   LinearGradient as SvgGradient,
+  RadialGradient,
   Stop,
 } from 'react-native-svg';
 
@@ -28,6 +41,11 @@ import {
 } from '../../../services/artists/artistArtwork.js';
 import { usePlayer } from '../../../context/player-context.jsx';
 
+/* ───────────── Theme ───────────── */
+const PINK_GRAD = ['#D4208A', '#7A3CF0']; // action gradient (follow, active chip, play)
+const RING_GRAD = ['#FF3FA4', '#6A5BFF']; // artist photo ring
+const PAGE_SIZE = 30;
+
 /* ───────────── Helpers ───────────── */
 const fmt = (s) => {
   if (!s || isNaN(s)) return '0:00';
@@ -38,72 +56,94 @@ const fmt = (s) => {
 
 const cn = (v) => {
   if (v == null || isNaN(v)) return '0';
-  if (v >= 1000000) {
-    return `${(v / 1000000).toFixed(1).replace('.0', '')}M`;
-  }
-  if (v >= 1000) {
-    return `${(v / 1000).toFixed(1).replace('.0', '')}K`;
-  }
+  if (v >= 1000000) return `${(v / 1000000).toFixed(1).replace('.0', '')}M`;
+  if (v >= 1000) return `${(v / 1000).toFixed(1).replace('.0', '')}K`;
   return `${v}`;
 };
 
+// svg gradient ids must be safe for url(#id)
+const gid = (v) => `g_${String(v).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+
 const SORTS = ['Popular', 'Newest', 'A–Z'];
-const SORT_MAP = {
-  0: 'popular',
-  1: 'newest',
-  2: 'az',
-};
+const SORT_MAP = { 0: 'popular', 1: 'newest', 2: 'az' };
 
 /* ───────────── Icons ───────────── */
 const IconBack = () => (
-  <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#1d1233" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+  <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <Path d="M15 5l-7 7 7 7" />
   </Svg>
 );
-
 const IconPlus = () => (
-  <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.6} strokeLinecap="round">
+  <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3} strokeLinecap="round">
     <Path d="M12 5v14M5 12h14" />
   </Svg>
 );
-
 const IconCheck = () => (
-  <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#b3157a" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round">
+  <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#C2137E" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
     <Path d="m5 13 4 4L19 7" />
   </Svg>
 );
-
-const IconPlay = ({ size = 16, color = '#fff' }) => (
+const IconPlay = ({ size = 18, color = '#fff' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
     <Path d="M7 4.5v15a1 1 0 0 0 1.5.9l12-7.5a1 1 0 0 0 0-1.8l-12-7.5A1 1 0 0 0 7 4.5Z" />
   </Svg>
 );
-
-const IconPause = ({ size = 16, color = '#fff' }) => (
+const IconPause = ({ size = 18, color = '#fff' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
     <Path d="M6 5h4v14H6zm8 0h4v14h-4z" />
   </Svg>
 );
-
-const IconNext = ({ size = 18, color = '#1d1233' }) => (
+const IconNext = ({ size = 20, color = '#fff' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
     <Path d="M6 4.5v15a1 1 0 0 0 1.5.9L16 13.8V19a1 1 0 1 0 2 0V5a1 1 0 1 0-2 0v5.2L7.5 3.6A1 1 0 0 0 6 4.5Z" />
   </Svg>
 );
 
-const CardGradient = ({ id, colors }) => (
-  <Svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }}>
+/* ───────────── Building blocks ───────────── */
+
+/** Fills its (overflow-hidden, rounded) parent with a diagonal gradient. */
+const Grad = ({ id, colors }) => (
+  <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
     <Defs>
-      <SvgGradient id={`prof_g_${id}`} x1="0" y1="0" x2="1" y2="1">
+      <SvgGradient id={gid(id)} x1="0" y1="0" x2="1" y2="1">
         <Stop offset="0" stopColor={colors[0]} />
         <Stop offset="1" stopColor={colors[1]} />
       </SvgGradient>
     </Defs>
-    <Rect width="100%" height="100%" fill={`url(#prof_g_${id})`} />
+    <Rect width="100%" height="100%" fill={`url(#${gid(id)})`} />
   </Svg>
 );
 
-/* ───────────── Equalizer Bars (Now Playing) ───────────── */
+/** Soft radial colour glow for the page background. */
+const Glow = ({ id, color, size, opacity, style }) => (
+  <View pointerEvents="none" style={[{ position: 'absolute', width: size, height: size }, style]}>
+    <Svg width={size} height={size}>
+      <Defs>
+        <RadialGradient id={gid(id)} cx="50%" cy="50%" r="50%">
+          <Stop offset="0" stopColor={color} stopOpacity={opacity} />
+          <Stop offset="1" stopColor={color} stopOpacity={0} />
+        </RadialGradient>
+      </Defs>
+      <Rect width="100%" height="100%" fill={`url(#${gid(id)})`} />
+    </Svg>
+  </View>
+);
+
+/** Curved-corner picture holder: real image, or gradient + initials. */
+const Art = ({ id, uri, colors, label, className = '', textClass = 'text-[13px]' }) => (
+  <View className={`overflow-hidden ${className}`}>
+    {uri ? (
+      <Image source={{ uri }} className="h-full w-full" resizeMode="cover" />
+    ) : (
+      <View className="h-full w-full items-center justify-center">
+        <Grad id={id} colors={colors} />
+        <Text className={`font-bold text-white ${textClass}`}>{label}</Text>
+      </View>
+    )}
+  </View>
+);
+
+/* ───────────── Equalizer bars (now playing) ───────────── */
 function EqualizerBar({ delay, active, playing, isScreenActive = true }) {
   const [anim] = useState(() => new Animated.Value(0.3));
 
@@ -134,73 +174,61 @@ function EqualizerBar({ delay, active, playing, isScreenActive = true }) {
 
   return (
     <Animated.View
-      className="h-3.5 w-[3px] rounded-sm bg-[#ff3fa4]"
+      className="h-4 w-[3px] rounded-sm bg-[#ff7cc4]"
       style={{ transform: [{ scaleY: anim }] }}
     />
   );
 }
 
-/* ───────────── Song Row Component ───────────── */
-const SongRow = React.memo(({ song, rank, active, playing, onPress, isScreenActive = true }) => {
-  const colors = useMemo(() => getArtistGradient(song.artist || song.title), [song.artist, song.title]);
+/* ───────────── Song row ───────────── */
+const SongRow = React.memo(({ song, active, playing, onPress, isScreenActive = true }) => {
+  const colors = useMemo(
+    () => getArtistGradient(song.album || song.artist || song.title),
+    [song.album, song.artist, song.title]
+  );
 
   return (
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.7}
-      className={`mb-2 flex-row items-center gap-3 rounded-2xl p-2.5 ${
-        active ? 'bg-[#4a1e8c]/[0.12]' : 'bg-transparent'
+      accessibilityRole="button"
+      accessibilityLabel={`Play ${song.title}`}
+      className={`mb-1 h-[68px] flex-row items-center gap-3.5 rounded-[22px] px-2.5 ${
+        active ? 'bg-white/10' : 'bg-transparent'
       }`}
     >
-      {rank !== undefined && (
-        <Text className="w-5 text-center text-sm font-bold text-[#665b84]">
-          {rank}
-        </Text>
-      )}
+      <Art
+        id={`row_${song.id}`}
+        uri={song.artwork_uri}
+        colors={colors}
+        label={getArtistInitials(song.title)}
+        className="h-12 w-12 rounded-2xl"
+      />
 
-      {/* Album Artwork */}
-      <View className="h-12 w-12 overflow-hidden rounded-xl bg-purple-900/20">
-        {song.artwork_uri ? (
-          <Image
-            source={{ uri: song.artwork_uri }}
-            className="h-full w-full"
-            resizeMode="cover"
-          />
-        ) : (
-          <View className="h-full w-full items-center justify-center">
-            <CardGradient id={`row_${song.id}`} colors={colors} />
-            <Text className="text-xs font-bold text-white/90">
-              {getArtistInitials(song.title)}
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* Song Info */}
       <View className="min-w-0 flex-1 justify-center">
         <Text
           numberOfLines={1}
-          className={`text-sm font-semibold ${
-            active ? 'text-[#b3157a]' : 'text-[#1d1233]'
-          }`}
+          className={`text-sm font-semibold ${active ? 'text-[#ff7cc4]' : 'text-white'}`}
         >
           {song.title}
         </Text>
-
-        <Text numberOfLines={1} className="mt-0.5 text-xs text-[#665b84]">
-          {song.artist || 'Unknown Artist'} {song.album ? `· ${song.album}` : ''}
+        <Text numberOfLines={1} className="mt-0.5 text-xs text-[#bbaae6]">
+          {song.artist || 'Unknown Artist'}
+          {song.album ? ` · ${song.album}` : ''}
         </Text>
       </View>
 
-      {/* Duration or Equalizer */}
       {active && playing ? (
-        <View className="flex-row items-center gap-1 px-2">
+        <View className="flex-row items-end gap-[3px] px-1">
           <EqualizerBar delay={0} active={active} playing={playing} isScreenActive={isScreenActive} />
           <EqualizerBar delay={1} active={active} playing={playing} isScreenActive={isScreenActive} />
           <EqualizerBar delay={2} active={active} playing={playing} isScreenActive={isScreenActive} />
         </View>
       ) : (
-        <Text className="text-xs font-medium text-[#665b84]">
+        <Text
+          className={`text-xs font-medium ${active ? 'text-[#ff7cc4]' : 'text-[#bbaae6]'}`}
+          style={{ fontVariant: ['tabular-nums'] }}
+        >
           {fmt(song.duration)}
         </Text>
       )}
@@ -209,52 +237,48 @@ const SongRow = React.memo(({ song, rank, active, playing, onPress, isScreenActi
 });
 SongRow.displayName = 'SongRow';
 
-/* ───────────── Album Card Component ───────────── */
+/* ───────────── Album tile ───────────── */
 const AlbumCard = React.memo(({ album, isSelected, onPress }) => {
   const colors = useMemo(() => getArtistGradient(album.name), [album.name]);
 
   return (
     <TouchableOpacity
       onPress={onPress}
-      activeOpacity={0.8}
-      className={`w-[140px] rounded-3xl p-1 ${
-        isSelected ? 'border-2 border-[#b3157a]' : ''
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel={`Filter by album ${album.name}`}
+      accessibilityState={{ selected: isSelected }}
+      className={`h-[148px] w-[148px] overflow-hidden rounded-[30px] border-2 ${
+        isSelected ? 'border-white' : 'border-transparent'
       }`}
     >
-      <View className="h-[132px] w-[132px] overflow-hidden rounded-2xl bg-purple-900/20">
-        {album.artwork_uri ? (
-          <Image
-            source={{ uri: album.artwork_uri }}
-            className="h-full w-full"
-            resizeMode="cover"
-          />
-        ) : (
-          <View className="h-full w-full items-center justify-center">
-            <CardGradient id={`alb_${album.name}`} colors={colors} />
-            <Text className="text-center text-sm font-bold text-white/90 px-2">
-              {album.name}
-            </Text>
-          </View>
-        )}
-      </View>
+      {album.artwork_uri ? (
+        <>
+          <Image source={{ uri: album.artwork_uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          <View className="absolute inset-0 bg-black/30" />
+        </>
+      ) : (
+        <Grad id={`alb_${album.name}`} colors={colors} />
+      )}
+
+      {album.year ? (
+        <Text className="absolute left-4 top-3.5 text-xs font-medium text-white/85">
+          {album.year}
+        </Text>
+      ) : null}
 
       <Text
-        numberOfLines={1}
-        className="mt-2 text-sm font-semibold text-[#1d1233]"
+        numberOfLines={2}
+        className="absolute bottom-4 left-4 right-4 text-lg font-bold leading-[21px] text-white"
       >
         {album.name}
-      </Text>
-
-      <Text className="text-xs text-[#665b84]">
-        {album.year ? `${album.year} · ` : ''}
-        {album.trackCount} {album.trackCount === 1 ? 'song' : 'songs'}
       </Text>
     </TouchableOpacity>
   );
 });
 AlbumCard.displayName = 'AlbumCard';
 
-/* ───────────── Inner Artist Profile Component ───────────── */
+/* ───────────── Screen content ───────────── */
 function ArtistProfileContent({ artistId }) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -271,7 +295,7 @@ function ArtistProfileContent({ artistId }) {
 
   const [sortIndex, setSortIndex] = useState(0);
   const [albumFilter, setAlbumFilter] = useState(null);
-  const [shownCount, setShownCount] = useState(30);
+  const [shownCount, setShownCount] = useState(PAGE_SIZE);
 
   const activeSort = SORT_MAP[sortIndex] || 'popular';
 
@@ -286,33 +310,22 @@ function ArtistProfileContent({ artistId }) {
     error,
     refresh,
     toggleFollow,
-  } = useArtistProfile(artistId, {
-    sort: activeSort,
-    album: albumFilter,
-  });
+  } = useArtistProfile(artistId, { sort: activeSort, album: albumFilter });
 
-  const scrollRef = useRef(null);
+  const artistColors = useMemo(
+    () => (artist?.name ? getArtistGradient(artist.name) : RING_GRAD),
+    [artist]
+  );
+  const artistInitials = useMemo(
+    () => (artist?.name ? getArtistInitials(artist.name) : '??'),
+    [artist]
+  );
+  const currentColors = useMemo(
+    () => getArtistGradient(currentTrack?.album || currentTrack?.artist || currentTrack?.title || ''),
+    [currentTrack]
+  );
 
-  const artistColors = useMemo(() => {
-    return artist?.name ? getArtistGradient(artist.name) : ['#ff3fa4', '#9650ff'];
-  }, [artist]);
-
-  const artistInitials = useMemo(() => {
-    return artist?.name ? getArtistInitials(artist.name) : '??';
-  }, [artist]);
-
-  // Top 5 popular songs
-  const popularTop5 = useMemo(() => {
-    if (!songs || songs.length === 0) return [];
-    return songs.slice(0, 5);
-  }, [songs]);
-
-  // Visible songs with pagination limit
-  const visibleSongs = useMemo(() => {
-    if (!songs) return [];
-    return songs.slice(0, shownCount);
-  }, [songs, shownCount]);
-
+  const visibleSongs = useMemo(() => (songs ? songs.slice(0, shownCount) : []), [songs, shownCount]);
   const remainingSongs = Math.max(0, (songs?.length ?? 0) - visibleSongs.length);
 
   /* Actions */
@@ -320,64 +333,75 @@ function ArtistProfileContent({ artistId }) {
     if (!artistId) return;
     try {
       const queue = getArtistPlayableQueue(artistId, { sort: activeSort, album: albumFilter });
-      if (queue && queue.length > 0) {
-        playSongs(queue, 0);
-      }
+      if (queue && queue.length > 0) playSongs(queue, 0);
     } catch (err) {
       console.warn('handlePlayHero failed', err);
     }
   }, [artistId, activeSort, albumFilter, playSongs]);
 
-  const handlePlaySong = useCallback((index) => {
-    if (!songs || songs.length === 0) return;
-    playSongs(songs, index);
-  }, [songs, playSongs]);
+  const handlePlaySong = useCallback(
+    (index) => {
+      if (!songs || songs.length === 0) return;
+      playSongs(songs, index);
+    },
+    [songs, playSongs]
+  );
 
-  const handleSelectRelated = useCallback((relatedId) => {
-    router.push({
-      pathname: '/(public)/artists/[artistsId]',
-      params: { artistsId: relatedId },
-    });
-  }, [router]);
+  const handleSelectRelated = useCallback(
+    (relatedId) => {
+      router.push({
+        pathname: '/(public)/artists/[artistsId]',
+        params: { artistsId: relatedId },
+      });
+    },
+    [router]
+  );
 
-  // Mini-player progress ring calculation
+  const setSort = (k) => {
+    setSortIndex(k);
+    setShownCount(PAGE_SIZE);
+  };
+  const clearAlbum = () => {
+    setAlbumFilter(null);
+    setShownCount(PAGE_SIZE);
+  };
+
+  // mini-player progress (0..1)
   const currentDuration = currentTrack?.duration || 1;
-  const currentPos = playbackPos || 0;
-  const ringProgress = Math.min(Math.max(currentPos / currentDuration, 0), 1);
-  const ringOffset = 150.8 * (1 - ringProgress);
+  const progress = Math.min(Math.max((playbackPos || 0) / currentDuration, 0), 1);
 
-  /* ───────────── Loading / Error / Not Found States ───────────── */
+  /* ───────────── Loading / error / not found ───────────── */
+  const BackButton = (
+    <TouchableOpacity
+      onPress={() => router.back()}
+      accessibilityRole="button"
+      accessibilityLabel="Back"
+      className="h-11 w-11 items-center justify-center rounded-2xl border border-white/[0.14] bg-white/[0.09]"
+    >
+      <IconBack />
+    </TouchableOpacity>
+  );
+
   if (loading && !artist) {
     return (
-      <View className="flex-1 bg-[#f4eeff] items-center justify-center">
-        <ActivityIndicator size="large" color="#ff3fa4" />
-        <Text className="mt-3 text-sm font-medium text-[#665b84]">
-          Loading artist profile...
-        </Text>
+      <View className="flex-1 items-center justify-center bg-[#150a33]">
+        <ActivityIndicator size="large" color="#ff7cc4" />
+        <Text className="mt-3 text-sm font-medium text-[#bbaae6]">Loading artist profile...</Text>
       </View>
     );
   }
 
   if (error && !artist) {
     return (
-      <View className="flex-1 bg-[#f4eeff] px-6" style={{ paddingTop: insets.top + 20 }}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="h-10 w-10 items-center justify-center rounded-full bg-[#4a1e8c]/[0.08]"
-        >
-          <IconBack />
-        </TouchableOpacity>
+      <View className="flex-1 bg-[#150a33] px-5" style={{ paddingTop: insets.top + 20 }}>
+        {BackButton}
         <View className="flex-1 items-center justify-center">
-          <Text className="text-lg font-bold text-[#b3157a]">
-            Error Loading Artist
-          </Text>
-          <Text className="mt-1 text-sm text-[#665b84] text-center">
+          <Text className="text-lg font-bold text-[#ff7cc4]">Error Loading Artist</Text>
+          <Text className="mt-1 text-center text-sm text-[#bbaae6]">
             {error.message || 'An error occurred while reading from the music library.'}
           </Text>
-          <TouchableOpacity
-            onPress={refresh}
-            className="mt-5 rounded-full bg-[#b3157a] px-6 py-2.5"
-          >
+          <TouchableOpacity onPress={refresh} className="mt-5 overflow-hidden rounded-full px-6 py-2.5">
+            <Grad id="retry" colors={PINK_GRAD} />
             <Text className="font-semibold text-white">Retry</Text>
           </TouchableOpacity>
         </View>
@@ -387,24 +411,15 @@ function ArtistProfileContent({ artistId }) {
 
   if (!artist) {
     return (
-      <View className="flex-1 bg-[#f4eeff] px-6" style={{ paddingTop: insets.top + 20 }}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="h-10 w-10 items-center justify-center rounded-full bg-[#4a1e8c]/[0.08]"
-        >
-          <IconBack />
-        </TouchableOpacity>
+      <View className="flex-1 bg-[#150a33] px-5" style={{ paddingTop: insets.top + 20 }}>
+        {BackButton}
         <View className="flex-1 items-center justify-center">
-          <Text className="text-lg font-bold text-[#1d1233]">
-            Artist Not Found
-          </Text>
-          <Text className="mt-1 text-sm text-[#665b84] text-center">
+          <Text className="text-lg font-bold text-white">Artist Not Found</Text>
+          <Text className="mt-1 text-center text-sm text-[#bbaae6]">
             This artist could not be located in your local music database.
           </Text>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            className="mt-5 rounded-full bg-[#b3157a] px-6 py-2.5"
-          >
+          <TouchableOpacity onPress={() => router.back()} className="mt-5 overflow-hidden rounded-full px-6 py-2.5">
+            <Grad id="goback" colors={PINK_GRAD} />
             <Text className="font-semibold text-white">Go Back</Text>
           </TouchableOpacity>
         </View>
@@ -413,256 +428,183 @@ function ArtistProfileContent({ artistId }) {
   }
 
   return (
-    <View className="flex-1 bg-[#f4eeff]">
-      {/* Background glow */}
-      <View pointerEvents="none" className="absolute inset-0">
-        <View className="absolute left-0 top-0 h-[45%] w-[90%] rounded-full bg-[#9650ff]/40" />
-        <View className="absolute right-0 top-[8%] h-[38%] w-[70%] rounded-full bg-[#ff3caa]/30" />
-      </View>
+    <View className="flex-1 bg-[#150a33]">
+      {/* Background glows */}
+      <Glow id="glow_a" color="#7B2FF7" size={440} opacity={0.75} style={{ left: -150, top: -110 }} />
+      <Glow id="glow_b" color="#F0299B" size={400} opacity={0.55} style={{ right: -170, top: 40 }} />
 
       <ScrollView
-        ref={scrollRef}
         className="flex-1"
         contentContainerStyle={{
           paddingHorizontal: 20,
-          paddingTop: insets.top + 10,
-          paddingBottom: currentTrack ? 150 : 60,
+          paddingTop: insets.top + 12,
+          paddingBottom: currentTrack ? 140 : 60,
         }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Back Button */}
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="h-10 w-10 items-center justify-center rounded-full bg-[#4a1e8c]/[0.08]"
-        >
-          <IconBack />
-        </TouchableOpacity>
+        {BackButton}
 
-        {/* Hero Section */}
-        <View className="mt-2 flex-row items-center gap-[18px]">
+        {/* Hero: curved-corner photo + name + actions */}
+        <View className="mt-3 flex-row items-center gap-[18px]">
           <View
-            className="h-28 w-28 items-center justify-center rounded-full p-1"
             style={{
-              backgroundColor: '#ff3fa4',
               shadowColor: '#ff3fa4',
-              shadowOpacity: 0.55,
-              shadowRadius: 30,
+              shadowOpacity: 0.4,
+              shadowRadius: 24,
+              shadowOffset: { width: 0, height: 12 },
+              elevation: 10,
             }}
           >
-            <View className="h-full w-full overflow-hidden rounded-full border-4 border-[#f4eeff] items-center justify-center bg-purple-900/30">
-              {artist.image_uri ? (
-                <Image
-                  source={{ uri: artist.image_uri }}
-                  className="h-full w-full"
-                  resizeMode="cover"
-                />
-              ) : (
-                <View className="h-full w-full items-center justify-center">
-                  <CardGradient id={artist.id} colors={artistColors} />
-                  <Text className="text-2xl font-bold text-white">
-                    {artistInitials}
-                  </Text>
-                </View>
-              )}
+            <View className="h-[118px] w-[118px] overflow-hidden rounded-[36px]">
+              <Grad id="hero_ring" colors={RING_GRAD} />
+              <View className="m-[3px] flex-1 overflow-hidden rounded-[33px] bg-[#1b0c45]">
+                {artist.image_uri ? (
+                  <Image source={{ uri: artist.image_uri }} className="h-full w-full" resizeMode="cover" />
+                ) : (
+                  <View className="h-full w-full items-center justify-center">
+                    <Grad id={`hero_${artist.id}`} colors={artistColors} />
+                    <Text className="text-[40px] font-bold tracking-tight text-white">
+                      {artistInitials}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
           </View>
 
-          <View className="flex-1">
+          <View className="min-w-0 flex-1">
             <Text
               numberOfLines={2}
-              className="text-[26px] font-bold leading-[1.14] tracking-tight text-[#1d1233]"
+              className="text-[28px] font-bold leading-[31px] tracking-tight text-white"
             >
               {artist.name}
             </Text>
 
-            <View className="mt-3.5 flex-row items-center gap-3">
+            <View className="mt-3.5 flex-row items-center gap-2.5">
               <TouchableOpacity
                 onPress={toggleFollow}
-                activeOpacity={0.8}
-                className={`h-9 w-32 flex-row items-center justify-between rounded-full pl-3.5 pr-1 ${
-                  following
-                    ? 'bg-[#b3157a]'
-                    : 'border border-[#4a1e8c]/[0.16] bg-[#4a1e8c]/[0.08]'
-                }`}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={following ? 'Unfollow artist' : 'Follow artist'}
+                className="h-10 w-[136px] flex-row items-center justify-between overflow-hidden rounded-full border border-white/20 pl-4 pr-[5px]"
+                style={following ? null : { backgroundColor: 'rgba(255,255,255,0.1)' }}
               >
-                <Text
-                  className={`text-[11.5px] font-semibold ${
-                    following ? 'text-white' : 'text-[#1d1233]'
-                  }`}
-                >
+                {following ? <Grad id="follow_on" colors={PINK_GRAD} /> : null}
+                <Text className="text-xs font-semibold text-white">
                   {following ? 'Following' : 'Follow'}
                 </Text>
-
                 <View
-                  className={`h-7 w-7 items-center justify-center rounded-full ${
-                    following ? 'bg-white/95' : 'bg-[#e8208a]'
+                  className={`h-[30px] w-[30px] items-center justify-center overflow-hidden rounded-full ${
+                    following ? 'bg-white' : ''
                   }`}
                 >
-                  {following ? <IconCheck /> : <IconPlus />}
+                  {following ? (
+                    <IconCheck />
+                  ) : (
+                    <>
+                      <Grad id="follow_chip" colors={PINK_GRAD} />
+                      <IconPlus />
+                    </>
+                  )}
                 </View>
               </TouchableOpacity>
 
               <TouchableOpacity
                 onPress={handlePlayHero}
                 activeOpacity={0.8}
-                className="h-10 w-10 items-center justify-center rounded-full border border-[#4a1e8c]/[0.16] bg-[#4a1e8c]/[0.08]"
+                accessibilityRole="button"
+                accessibilityLabel="Play all"
+                className="h-11 w-11 items-center justify-center rounded-2xl border border-white/[0.14] bg-white/[0.09]"
               >
-                <IconPlay size={18} color="#1d1233" />
+                <IconPlay />
               </TouchableOpacity>
             </View>
           </View>
         </View>
 
-        {/* Stats Section */}
-        <View className="my-[26px] mb-2 flex-row text-center">
-          {stats?.followerCount != null ? (
-            <View className="flex-1 items-center">
-              <Text className="text-[22px] font-bold text-[#1d1233]">
-                {cn(stats.followerCount)}
-              </Text>
-              <Text className="text-xs text-[#665b84]">Listeners</Text>
-            </View>
-          ) : (
-            <View className="flex-1 items-center">
-              <Text className="text-[17px] font-bold text-[#1d1233]">
-                {following ? 'Followed' : 'Local'}
-              </Text>
-              <Text className="text-xs text-[#665b84]">Status</Text>
-            </View>
-          )}
-
-          <View className="flex-1 items-center border-l border-[#4a1e8c]/[0.16]">
-            <Text className="text-[22px] font-bold text-[#1d1233]">
-              {stats?.songCount ?? 0}
-            </Text>
-            <Text className="text-xs text-[#665b84]">Songs</Text>
+        {/* Stats */}
+        <View className="mt-7 flex-row">
+          <View className="flex-1 items-center">
+            <Text className="text-[22px] font-bold text-white">{stats?.songCount ?? 0}</Text>
+            <Text className="text-xs text-[#bbaae6]">Songs</Text>
           </View>
 
-          <View className="flex-1 items-center border-l border-[#4a1e8c]/[0.16]">
-            <Text className="text-[22px] font-bold text-[#1d1233]">
-              {stats?.albumCount ?? 0}
-            </Text>
-            <Text className="text-xs text-[#665b84]">Albums</Text>
+          <View className="flex-1 items-center border-l border-white/[0.16]">
+            <Text className="text-[22px] font-bold text-white">{stats?.albumCount ?? 0}</Text>
+            <Text className="text-xs text-[#bbaae6]">Albums</Text>
+          </View>
+
+          <View className="flex-1 items-center border-l border-white/[0.16]">
+            {stats?.followerCount != null ? (
+              <>
+                <Text className="text-[22px] font-bold text-white">{cn(stats.followerCount)}</Text>
+                <Text className="text-xs text-[#bbaae6]">Listeners</Text>
+              </>
+            ) : (
+              <>
+                <Text className="text-[22px] font-bold text-white">
+                  {following ? 'Followed' : 'Local'}
+                </Text>
+                <Text className="text-xs text-[#bbaae6]">Status</Text>
+              </>
+            )}
           </View>
         </View>
 
-        {/* Bio (if enriched) */}
+        {/* Bio (when enriched) */}
         {artist.bio ? (
-          <View className="mt-3 rounded-2xl bg-[#4a1e8c]/[0.05] p-3.5">
-            <Text numberOfLines={3} className="text-xs leading-relaxed text-[#51436e]">
+          <View className="mt-5 rounded-3xl border border-white/[0.14] bg-white/[0.09] p-4">
+            <Text numberOfLines={3} className="text-xs leading-5 text-[#d9ccf5]">
               {artist.bio}
             </Text>
           </View>
         ) : null}
 
-        {/* Similar Singers Section (Real data only, hidden when empty) */}
+        {/* Similar artists (real data only, hidden when empty) */}
         {related && related.length > 0 && (
-          <View className="mt-[26px]">
-            <Text className="mb-3 text-[15px] font-bold text-[#1d1233]">
-              Similar singers
-            </Text>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              className="-mx-5"
-              contentContainerStyle={{
-                paddingHorizontal: 20,
-                gap: 14,
-                paddingBottom: 6,
-              }}
-            >
-              {related.map((rel) => {
-                const relColors = getArtistGradient(rel.name);
-                const relInitials = getArtistInitials(rel.name);
-
-                return (
-                  <TouchableOpacity
-                    key={rel.id}
-                    onPress={() => handleSelectRelated(rel.id)}
-                    className="w-[68px] items-center"
-                    activeOpacity={0.8}
-                  >
-                    <View
-                      className="h-16 w-16 items-center justify-center rounded-full p-[3px]"
-                      style={{ backgroundColor: relColors[0] }}
-                    >
-                      <View className="h-full w-full overflow-hidden rounded-full border-[3px] border-[#f4eeff] items-center justify-center bg-purple-950/20">
-                        {rel.image_uri ? (
-                          <Image
-                            source={{ uri: rel.image_uri }}
-                            className="h-full w-full"
-                            resizeMode="cover"
-                          />
-                        ) : (
-                          <View className="h-full w-full items-center justify-center">
-                            <CardGradient id={`rel_${rel.id}`} colors={relColors} />
-                            <Text className="text-xs font-bold text-white">
-                              {relInitials}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    </View>
-
-                    <Text
-                      numberOfLines={1}
-                      className="mt-[7px] text-[10px] font-semibold tracking-[0.04em] text-[#665b84]"
-                    >
-                      {rel.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            className="-mx-5 mt-[26px]"
+            contentContainerStyle={{ paddingHorizontal: 20, gap: 16 }}
+          >
+            {related.map((rel) => (
+              <TouchableOpacity
+                key={rel.id}
+                onPress={() => handleSelectRelated(rel.id)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${rel.name}`}
+                className="w-[68px] items-center"
+              >
+                <Art
+                  id={`rel_${rel.id}`}
+                  uri={rel.image_uri}
+                  colors={getArtistGradient(rel.name)}
+                  label={getArtistInitials(rel.name)}
+                  className="h-16 w-16 rounded-[22px]"
+                  textClass="text-base"
+                />
+                <Text
+                  numberOfLines={1}
+                  className="mt-2 text-[11px] font-medium text-[#bbaae6]"
+                >
+                  {rel.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         )}
 
-        {/* Popular Top 5 */}
-        {popularTop5.length > 0 && (
-          <View className="mt-[26px]">
-            <View className="mb-3 flex-row items-baseline justify-between">
-              <Text className="text-[15px] font-bold text-[#1d1233]">
-                Popular{' '}
-                <Text className="text-xs font-medium text-[#665b84]">Top {popularTop5.length}</Text>
-              </Text>
-            </View>
-
-            <View>
-              {popularTop5.map((song, rank) => {
-                const isCurrent = currentTrack?.id === song.id;
-                return (
-                  <SongRow
-                    key={`pop_${song.id}`}
-                    song={song}
-                    rank={rank + 1}
-                    active={isCurrent}
-                    playing={isPlayingGlobal}
-                    onPress={() => handlePlaySong(rank)}
-                    isScreenActive={isFocused}
-                  />
-                );
-              })}
-            </View>
-          </View>
-        )}
-
-        {/* Albums Section (Real from DB) */}
+        {/* Albums (real data; tap to filter songs) */}
         {albums && albums.length > 0 && (
-          <View className="mt-[26px]">
-            <Text className="mb-3 text-[15px] font-bold text-[#1d1233]">
-              Albums
-            </Text>
-
+          <View className="mt-[30px]">
+            <Text className="text-[15px] font-bold text-white">Albums</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              className="-mx-5"
-              contentContainerStyle={{
-                paddingHorizontal: 20,
-                gap: 14,
-                paddingBottom: 6,
-              }}
+              className="-mx-5 mt-3"
+              contentContainerStyle={{ paddingHorizontal: 20, gap: 14 }}
             >
               {albums.map((alb) => {
                 const isSelected = albumFilter === alb.name;
@@ -673,7 +615,7 @@ function ArtistProfileContent({ artistId }) {
                     isSelected={isSelected}
                     onPress={() => {
                       setAlbumFilter(isSelected ? null : alb.name);
-                      setShownCount(30);
+                      setShownCount(PAGE_SIZE);
                     }}
                   />
                 );
@@ -682,189 +624,130 @@ function ArtistProfileContent({ artistId }) {
           </View>
         )}
 
-        {/* All Songs Header + Sort Chips */}
-        <View className="mt-[26px]">
-          <View className="mb-3 flex-row items-baseline justify-between">
-            <Text className="text-[15px] font-bold text-[#1d1233]">
-              All songs{' '}
-              <Text className="text-xs font-medium text-[#665b84]">
-                {songs?.length ?? 0}{' '}
-                {albumFilter ? `(filtered by "${albumFilter}")` : 'songs'}
-              </Text>
+        {/* All songs */}
+        <View className="mt-[30px]">
+          <View className="flex-row items-baseline justify-between">
+            <Text className="text-[15px] font-bold text-white">All songs</Text>
+            <Text className="text-xs text-[#bbaae6]">
+              {songs?.length ?? 0} {songs?.length === 1 ? 'song' : 'songs'}
             </Text>
           </View>
 
-          {/* Sort Chips */}
-          <View className="mb-2 flex-row flex-wrap gap-2">
-            {SORTS.map((label, k) => (
-              <TouchableOpacity
-                key={label}
-                onPress={() => {
-                  setSortIndex(k);
-                  setShownCount(30);
-                }}
-                className={`h-[34px] items-center justify-center rounded-full px-4 ${
-                  sortIndex === k
-                    ? 'bg-[#b3157a]'
-                    : 'bg-[#4a1e8c]/[0.08]'
-                }`}
-              >
-                <Text
-                  className={`text-[12.5px] font-semibold ${
-                    sortIndex === k ? 'text-white' : 'text-[#1d1233]'
-                  }`}
+          {/* Sort chips */}
+          <View className="mt-3 flex-row gap-2">
+            {SORTS.map((label, k) => {
+              const on = sortIndex === k;
+              return (
+                <TouchableOpacity
+                  key={label}
+                  onPress={() => setSort(k)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  className="h-11 items-center justify-center overflow-hidden rounded-full border border-white/[0.14] px-[18px]"
+                  style={on ? null : { backgroundColor: 'rgba(255,255,255,0.08)' }}
                 >
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  {on ? <Grad id="sort_on" colors={PINK_GRAD} /> : null}
+                  <Text className="text-[13px] font-semibold text-white">{label}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
-          {/* Album Filter Active Chip */}
-          {albumFilter && (
+          {/* Active album filter */}
+          {albumFilter ? (
             <TouchableOpacity
-              onPress={() => {
-                setAlbumFilter(null);
-                setShownCount(30);
-              }}
-              className="mb-2 h-[30px] flex-row items-center gap-2 self-start rounded-full border border-[#d61f88] bg-[#4a1e8c]/[0.08] px-3"
+              onPress={clearAlbum}
+              accessibilityRole="button"
+              accessibilityLabel={`Clear album filter ${albumFilter}`}
+              className="mt-2.5 h-[38px] flex-row items-center gap-2 self-start rounded-full border border-white/[0.14] bg-white/[0.09] px-3.5"
             >
-              <Text className="text-xs font-semibold text-[#1d1233]">
-                {albumFilter}
-              </Text>
-              <Text className="text-xs font-semibold text-[#d61f88]">×</Text>
+              <Text className="text-[13px] font-medium text-white">{albumFilter}</Text>
+              <Text className="text-[13px] font-semibold text-[#ff7cc4]">×</Text>
             </TouchableOpacity>
-          )}
+          ) : null}
 
-          {/* Song Rows */}
-          {visibleSongs.length === 0 ? (
-            <View className="py-8 items-center justify-center">
-              <Text className="text-sm font-medium text-[#665b84]">
-                No songs found.
-              </Text>
-            </View>
-          ) : (
-            <View>
-              {visibleSongs.map((song, idx) => {
-                const isCurrent = currentTrack?.id === song.id;
-                return (
-                  <SongRow
-                    key={song.id}
-                    song={song}
-                    active={isCurrent}
-                    playing={isPlayingGlobal}
-                    onPress={() => handlePlaySong(idx)}
-                    isScreenActive={isFocused}
-                  />
-                );
-              })}
-            </View>
-          )}
+          {/* Rows */}
+          <View className="mt-2.5">
+            {visibleSongs.length === 0 ? (
+              <View className="items-center justify-center py-8">
+                <Text className="text-sm font-medium text-[#bbaae6]">No songs found.</Text>
+              </View>
+            ) : (
+              visibleSongs.map((song, idx) => (
+                <SongRow
+                  key={song.id}
+                  song={song}
+                  active={currentTrack?.id === song.id}
+                  playing={isPlayingGlobal}
+                  onPress={() => handlePlaySong(idx)}
+                  isScreenActive={isFocused}
+                />
+              ))
+            )}
+          </View>
 
-          {/* Show More Button */}
           {remainingSongs > 0 && (
             <TouchableOpacity
-              onPress={() => setShownCount((s) => s + 30)}
-              className="mt-2.5 h-11 items-center justify-center rounded-full border border-[#4a1e8c]/[0.16]"
+              onPress={() => setShownCount((s) => s + PAGE_SIZE)}
+              accessibilityRole="button"
+              className="mt-2.5 h-11 items-center justify-center rounded-full border border-white/[0.14] bg-white/[0.09]"
             >
-              <Text className="text-[13px] font-semibold text-[#1d1233]">
-                Show {Math.min(30, remainingSongs)} more
+              <Text className="text-[13px] font-semibold text-white">
+                Show {Math.min(PAGE_SIZE, remainingSongs)} more
               </Text>
             </TouchableOpacity>
           )}
         </View>
       </ScrollView>
 
-      {/* Docked Mini Player connected to global player */}
+      {/* Docked mini player (global player) */}
       {currentTrack && (
         <View
-          pointerEvents="box-none"
-          className="absolute inset-x-0 bottom-0 items-center px-4"
-          style={{
-            paddingTop: 30,
-            paddingBottom: insets.bottom + 14,
-            backgroundColor: 'transparent',
-          }}
+          className="absolute left-3 right-3 h-[68px] flex-row items-center gap-3 overflow-hidden rounded-[28px] border border-white/[0.16] bg-[#28125c]/90 px-2.5"
+          style={{ bottom: insets.bottom + 12 }}
         >
-          <View className="w-full max-w-[398px] flex-row items-center gap-3 rounded-full border border-[#4a1e8c]/[0.16] bg-[#e9defc]/95 px-2 py-[7px] shadow-lg">
-            <View className="h-11 w-11 overflow-hidden rounded-full bg-purple-900/30 items-center justify-center">
-              {currentTrack.artwork_uri ? (
-                <Image
-                  source={{ uri: currentTrack.artwork_uri }}
-                  className="h-full w-full"
-                  resizeMode="cover"
-                />
-              ) : (
-                <View className="h-full w-full items-center justify-center">
-                  <CardGradient
-                    id="mini_cur"
-                    colors={getArtistGradient(currentTrack.artist || currentTrack.title)}
-                  />
-                  <Text className="text-xs font-bold text-white">
-                    {getArtistInitials(currentTrack.title)}
-                  </Text>
-                </View>
-              )}
-            </View>
+          <Art
+            id="mini_cur"
+            uri={currentTrack.artwork_uri}
+            colors={currentColors}
+            label={getArtistInitials(currentTrack.title)}
+            className="h-12 w-12 rounded-2xl"
+          />
 
-            <View className="min-w-0 flex-1">
-              <Text numberOfLines={1} className="text-sm font-semibold text-[#1d1233]">
-                {currentTrack.title}
-              </Text>
-
-              <Text numberOfLines={1} className="text-xs text-[#665b84]">
-                {currentTrack.artist || 'Unknown Artist'}
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              onPress={goNext}
-              className="h-10 w-10 items-center justify-center rounded-full"
-            >
-              <IconNext />
-            </TouchableOpacity>
-
-            <View className="relative h-[52px] w-[52px] items-center justify-center">
-              <Svg
-                width={52}
-                height={52}
-                viewBox="0 0 52 52"
-                className="absolute inset-0"
-                style={{ transform: [{ rotate: '-90deg' }] }}
-              >
-                <Circle
-                  cx={26}
-                  cy={26}
-                  r={24}
-                  fill="none"
-                  stroke="rgba(70,30,140,0.16)"
-                  strokeWidth={3}
-                />
-                <Circle
-                  cx={26}
-                  cy={26}
-                  r={24}
-                  fill="none"
-                  stroke="#ff3fa4"
-                  strokeWidth={3}
-                  strokeLinecap="round"
-                  strokeDasharray={150.8}
-                  strokeDashoffset={ringOffset}
-                />
-              </Svg>
-
-              <TouchableOpacity
-                onPress={togglePlay}
-                className="absolute inset-1.5 items-center justify-center rounded-full bg-[#b3157a]"
-              >
-                {isPlayingGlobal ? (
-                  <IconPause size={18} />
-                ) : (
-                  <IconPlay size={18} />
-                )}
-              </TouchableOpacity>
-            </View>
+          <View className="min-w-0 flex-1">
+            <Text numberOfLines={1} className="text-sm font-semibold text-white">
+              {currentTrack.title}
+            </Text>
+            <Text numberOfLines={1} className="mt-0.5 text-xs text-[#bbaae6]">
+              {currentTrack.artist || 'Unknown Artist'}
+            </Text>
           </View>
+
+          <TouchableOpacity
+            onPress={goNext}
+            accessibilityRole="button"
+            accessibilityLabel="Next song"
+            className="h-11 w-11 items-center justify-center"
+          >
+            <IconNext />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={togglePlay}
+            accessibilityRole="button"
+            accessibilityLabel={isPlayingGlobal ? 'Pause' : 'Play'}
+            className="h-12 w-12 items-center justify-center overflow-hidden rounded-full"
+          >
+            <Grad id="mini_play" colors={PINK_GRAD} />
+            {isPlayingGlobal ? <IconPause /> : <IconPlay />}
+          </TouchableOpacity>
+
+          {/* progress line */}
+          <View
+            pointerEvents="none"
+            className="absolute bottom-0 left-0 h-[3px] bg-[#ff7cc4]"
+            style={{ width: `${progress * 100}%` }}
+          />
         </View>
       )}
     </View>
