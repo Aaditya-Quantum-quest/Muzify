@@ -189,7 +189,7 @@ export default function HomeScreen() {
 
         {/* Other components */}
 
-        {/* <Playlists /> */}
+
 
         {/* <NowPlayingWidget /> */}
 

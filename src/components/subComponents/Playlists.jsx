@@ -507,7 +507,7 @@ function Playlists({
 
   const fanStyle = useMemo(() => ({ height: FAN_H, marginHorizontal: -bleed }), [bleed]);
 
-  if (count === 0 && everActive.current) return null;
+  if (count === 0 && everActive) return null;
 
   const left = (fanW - CARD_W) / 2;
   const focused = list[Math.min(focusIdx, last)];
@@ -537,7 +537,7 @@ function Playlists({
       </View>
 
       {/* Fan (built only after first visibility) */}
-      {!everActive.current ? (
+      {!everActive ? (
         <View style={{ height: FAN_H + 150 }} />
       ) : (
         <>

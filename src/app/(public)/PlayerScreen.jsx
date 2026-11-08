@@ -84,9 +84,16 @@ function buildPath(vals, W, base, H, scale = 1) {
 // Touch / drag -> 0..1 value. Uses locationX at touch start + dx so it stays stable while dragging.
 function useScrub(width, pad, onScrub, onRelease) {
   const start = useRef(0);
-  const live = useRef({});
-  live.current = { width, pad, onScrub, onRelease };
-  return useMemo(
+  // Keep the latest props in a ref so the gesture handlers (built once, below)
+  // always read fresh values at gesture time — never a stale closure. The ref
+  // is written after paint, never during render (see EquilizerScreen).
+  const live = useRef({ width, pad, onScrub, onRelease });
+  useEffect(() => {
+    live.current = { width, pad, onScrub, onRelease };
+  }, [width, pad, onScrub, onRelease]);
+
+  const [pan] = useState(
+    // eslint-disable-next-line react-hooks/refs
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
@@ -105,9 +112,9 @@ function useScrub(width, pad, onScrub, onRelease) {
           const { width: w, pad: p, onRelease: r } = live.current;
           r?.(clamp((start.current + g.dx) / (w - p * 2)));
         },
-      }).panHandlers,
-    []
+      }),
   );
+  return pan.panHandlers;
 }
 
 /* ---------- album art: any aspect ratio, fitted inside a box ---------- */
@@ -115,10 +122,15 @@ function useScrub(width, pad, onScrub, onRelease) {
 function AlbumArt({ source, maxW, maxH }) {
   const [ratio, setRatio] = useState(1);
 
+  // Reset the cached aspect ratio when the source changes (a different track
+  // may have a different image dimensions). Canonical "reset state on prop
+  // change" effect; the compiler flags the direct setState.
   useEffect(() => {
     const src = Image.resolveAssetSource(source);
-    if (src?.width && src?.height) setRatio(src.width / src.height);
-    else if (src?.uri) Image.getSize(src.uri, (w, h) => h && setRatio(w / h), () => {});
+    if (src?.width && src?.height) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRatio(src.width / src.height);
+    } else if (src?.uri) Image.getSize(src.uri, (w, h) => h && setRatio(w / h), () => {});
   }, [source]);
 
   let w = maxW;
@@ -252,8 +264,13 @@ export default function PlayerScreen() {
 
   useEffect(() => {
     if (pos < track.duration) return;
-    if (repeat) setPos(0);
-    else go(1);
+    // Track ended: repeat restarts it, otherwise advance. React's compiler
+    // flags the conditional setState, but this is the standard "react to
+    // derived state" pattern.
+    if (repeat) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPos(0);
+    } else go(1);
   }, [pos, track.duration, repeat, go]);
 
   const barW = width - 48;

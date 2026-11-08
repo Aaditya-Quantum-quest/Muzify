@@ -1,761 +1,499 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, Pressable, Image, Switch, PanResponder } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import {
+  AppState, PanResponder, Pressable, ScrollView, StyleSheet, Text, View,
+  useColorScheme, useWindowDimensions,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, useIsFocused } from 'expo-router';
+import { useIsFocused, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
-import Svg, { Defs, LinearGradient, Stop, Path, Circle, Line } from 'react-native-svg';
+import Svg, { Circle, Line, Path } from 'react-native-svg';
 
 /* ───────────────────────── Theme ───────────────────────── */
-const C = {
-  bg: '#131316',
-  low: '#1b1b1e',
-  container: '#1f1f22',
-  high: '#2a2a2d',
-  highest: '#353438',
-  lowest: '#0e0e11',
-  primary: '#ffc174',
-  amber: '#f59e0b',
-  onPrimary: '#472a00',
-  text: '#e5e1e6',
-  muted: '#d8c3ad',
-  outline: '#534434',
-  pink: '#ffb3b5',
-};
+const DARK = { bg: '#0c0e12', ink: '#ecebe6', mute: '#7d8290', line: '#232731', acc: '#5b8aff' };
+const LIGHT = { bg: '#f1f0ec', ink: '#14161b', mute: '#6b707d', line: '#d6d5cf', acc: '#2f5fe0' };
 
-const IMG = {
-  logo: 'https://lh3.googleusercontent.com/aida/AEtjO1XrA980I8qrMTFOI_bQ3M8NDa_Lixi0_040t7RV8fjjl3n7hrlhtljIAgqNIsN3tYLKvTTMhiT6tE6RnDXn1tnLxBjvq20ZsjGHTsiPhh0eXfbWUDlZ8RB-OdyNH0DtHvqWenO7WJmjo6lq6fihfyrNWPvWNbP8cLfNy2ImW4SXEhR1Hym06YFmfKrfoQNOSCMJvvwEMs_NVLLnDujDt9yLBqVGFm_7ugElTljmDZDs',
-  avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBMayXr0t_AfPd9R_ZFeOmleAs4y_q81iYXyUcMenXi-4hwpBZuqToqn1ORjhCoTVuv_eCrBelP1V6MhwAQx9uR4xJZgJ7R5vpFueERtEO2hUmc5iWHXgxbv1bC0wkYBrttFIkumM5R0TrGqUsJEd9NCtyg-2OLQTxggxDeUrKdOB-ssHfKbYEIfMcJ8abgAaZ6hRYFAknA4fJdbiMexubmXatLJRwBIa76Su5LpEE8',
-  art: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCHaYhtN4RlKP_YXAg2l-sc1aweGA3TKfSz5eTBRhEvlldqQOyQP3diP2m2bKKsUn8Sj-WkVsXKEaHRfLA7OBXtVx4PdUInK9798omJ5lludIR82Rw7Zd3uZACdAlbScRem_fNuNoN1Mvs3ggVHAfDQ3xAbres_4ccQW0MQgBhg1eHXwoNEhji74aIlzWJHtOvsDEMvWLcHFTrm44Xe8MDmU2Ruj2TqZyj9FXXrlCTO',
+const mk = (T) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: T.bg },
+  header: { position: 'absolute', left: 0, right: 0, top: 0, zIndex: 10, backgroundColor: T.bg },
+  headerRow: { height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12 },
+  title: { color: T.ink, fontSize: 15, fontWeight: '500', marginLeft: 4 },
+  hit: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  power: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingHorizontal: 8 },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: T.mute },
+  dotOn: { backgroundColor: T.acc },
+  small: { color: T.mute, fontSize: 13, fontWeight: '300' },
+  strong: { color: T.ink, fontSize: 13, fontWeight: '400' },
+  pad: { paddingHorizontal: 24 },
+  big: { color: T.ink, fontWeight: '200', letterSpacing: -4 },
+  unit: { color: T.mute, fontSize: 22, fontWeight: '300' },
+  pill: { height: 40, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: T.line, alignItems: 'center', justifyContent: 'center' },
+  pillOn: { backgroundColor: T.ink, borderColor: T.ink },
+  pillTxt: { color: T.mute, fontSize: 13 },
+  pillTxtOn: { color: T.bg },
+  presets: { gap: 28, paddingHorizontal: 24, alignItems: 'center' },
+  tab: { minHeight: 44, justifyContent: 'center', borderBottomWidth: 1, borderBottomColor: 'transparent' },
+  tabOn: { borderBottomColor: T.acc },
+  tabTxt: { color: T.mute, fontSize: 14, fontWeight: '300' },
+  tabTxtOn: { color: T.ink },
+  rule: { height: StyleSheet.hairlineWidth, backgroundColor: T.line, marginHorizontal: 24 },
+  mod: { paddingHorizontal: 24, paddingVertical: 32, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: T.line },
+  modTitle: { color: T.ink, fontSize: 17, fontWeight: '500' },
+  modDesc: { color: T.mute, fontSize: 13, marginTop: 2, marginBottom: 20, maxWidth: 260 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
+  track: { height: StyleSheet.hairlineWidth * 2, backgroundColor: T.mute },
+  thumb: { position: 'absolute', width: 16, height: 16, borderRadius: 8, backgroundColor: T.ink },
+  seg: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 18 },
+  meter: { height: 2, backgroundColor: T.line, marginTop: 8, marginBottom: 12 },
+  bar: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 10, backgroundColor: T.bg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: T.line, paddingTop: 12, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  play: { width: 48, height: 48, borderRadius: 24, backgroundColor: T.ink, alignItems: 'center', justifyContent: 'center' },
+  dbTxt: { position: 'absolute', right: 0, color: T.mute, fontSize: 10 },
+});
+const cache = {};
+const getS = (scheme) => {
+  const k = scheme === 'light' ? 'light' : 'dark';
+  return (cache[k] ??= { T: k === 'light' ? LIGHT : DARK, s: mk(k === 'light' ? LIGHT : DARK) });
 };
+const useS = () => getS(useColorScheme());
 
 /* ───────────────────────── Data ───────────────────────── */
-const BAND_LABELS = ['31', '63', '125', '250', '500', '1k', '2k', '4k', '8k', '16k'];
-
 const PRESETS = {
-  'Audiophile Reference': [35, 40, 15, 0, -10, 20, 30, 45, 25, 15],
-  'Studio Flat': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  'Warm Tube Analog': [50, 45, 30, 10, 5, 0, -5, -15, -20, -30],
-  'Bass Presence': [70, 65, 40, 15, 0, 0, 5, 10, 15, 20],
-  'Vocal Clarity': [-15, -10, 0, 10, 25, 40, 45, 30, 15, 10],
-  'Custom Curve': [20, 25, 10, -5, -10, 15, 25, 35, 20, 10],
+  'Audiophile reference': [35, 40, 15, 0, -10, 20, 30, 45, 25, 15],
+  'Studio flat': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  'Warm tube': [50, 45, 30, 10, 5, 0, -5, -15, -20, -30],
+  'Bass presence': [70, 65, 40, 15, 0, 0, 5, 10, 15, 20],
+  'Vocal clarity': [-15, -10, 0, 10, 25, 40, 45, 30, 15, 10],
+};
+const LABELS = ['31', '63', '125', '250', '500', '1k', '2k', '4k', '8k', '16k'];
+const FREQ = ['31 Hz', '63 Hz', '125 Hz', '250 Hz', '500 Hz', '1 kHz', '2 kHz', '4 kHz', '8 kHz', '16 kHz'];
+const ROOMS = ['Studio room', 'Concert hall', 'Intimate club'];
+const HARMS = ['Silky, even harmonics', 'Punchy, odd harmonics'];
+const PHASES = ['Linear phase', 'Minimum phase'];
+
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const fmt = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v / 10).toFixed(1)}`;
+
+/* ───────────────────────── State ───────────────────────── */
+const INIT = {
+  prof: { A: [...PRESETS['Audiophile reference']], B: [...PRESETS['Studio flat']] },
+  name: { A: 'Audiophile reference', B: 'Studio flat' },
+  ab: 'A', on: true, sel: 5, mute: Array(10).fill(false),
+  crossfeed: true, width: 115, room: 0, drive: 28, harm: 0, phase: 0, preamp: 0, playing: true,
 };
 
-// The 5 draggable nodes on the curve map to these band indexes
-const NODES = [
-  { band: 0, x: 50, name: 'BASS 32Hz' },
-  { band: 3, x: 120, name: 'LOW-MID 250Hz' },
-  { band: 5, x: 195, name: 'MID 1.0kHz' },
-  { band: 7, x: 265, name: 'HIGH-MID 4.0kHz' },
-  { band: 9, x: 330, name: 'TREBLE 16kHz' },
-];
+function reducer(s, a) {
+  switch (a.type) {
+    case 'band': {
+      const cur = s.prof[s.ab];
+      const v = clamp(a.v, -120, 120);
+      if (cur[a.i] === v) return s;
+      const arr = [...cur];
+      arr[a.i] = v;
+      return { ...s, prof: { ...s.prof, [s.ab]: arr }, name: { ...s.name, [s.ab]: 'Custom curve' } };
+    }
+    case 'nudge': return reducer(s, { type: 'band', i: s.sel, v: s.prof[s.ab][s.sel] + a.d });
+    case 'preset':
+      return { ...s, prof: { ...s.prof, [s.ab]: [...PRESETS[a.name]] }, name: { ...s.name, [s.ab]: a.name } };
+    case 'mute': return { ...s, mute: s.mute.map((m, j) => (j === s.sel ? !m : m)) };
+    case 'toggle': return { ...s, [a.k]: !s[a.k] };
+    case 'set': return s[a.k] === a.v ? s : { ...s, [a.k]: a.v };
+    default: return s;
+  }
+}
 
-const VB_W = 360;
-const VB_H = 176;
-const CY = 88;
-const SCALE = 0.66; // ±120 (=±12dB) → ±79px
+/* ───────── Visibility hooks: pause work when off-screen or app backgrounded ───────── */
+function useAppActive() {
+  const [active, setActive] = useState(AppState.currentState === 'active');
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => setActive(st === 'active'));
+    return () => sub.remove();
+  }, []);
+  return active;
+}
 
-const fmt = (v) => `${v > 0 ? '+' : ''}${(v / 10).toFixed(1)}`;
-const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+/* ───────────────────────── Primitives ───────────────────────── */
+const Pill = memo(function Pill({ label, on, onPress, hint }) {
+  const { s } = useS();
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityHint={hint}
+      style={[s.pill, on && s.pillOn]}>
+      <Text style={[s.pillTxt, on && s.pillTxtOn]}>{label}</Text>
+    </Pressable>
+  );
+});
 
-/* Smooth curve through nodes (Catmull-Rom → cubic Bézier) */
-function buildCurve(ys) {
-  const pts = [
-    { x: 0, y: ys[0] },
-    ...NODES.map((n, i) => ({ x: n.x, y: ys[i] })),
-    { x: VB_W, y: ys[ys.length - 1] },
-  ];
-  let d = `M ${pts[0].x} ${pts[0].y.toFixed(2)}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i - 1] || pts[i];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[i + 2] || p2;
-    const c1x = p1.x + (p2.x - p0.x) / 6;
-    const c1y = p1.y + (p2.y - p0.y) / 6;
-    const c2x = p2.x - (p3.x - p1.x) / 6;
-    const c2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2.x} ${p2.y.toFixed(2)}`;
+const Seg = memo(function Seg({ options, index, onSelect }) {
+  const { s } = useS();
+  return (
+    <View style={s.seg}>
+      {options.map((o, i) => (
+        <Pressable key={o} onPress={() => onSelect(i)} accessibilityRole="radio"
+          accessibilityState={{ selected: i === index }} style={[s.tab, i === index && s.tabOn]}>
+          <Text style={[s.tabTxt, i === index && s.tabTxtOn]}>{o}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+});
+
+const Slider = memo(function Slider({ value, min, max, step = 1, onChange, onLock, disabled, label }) {
+  const { s } = useS();
+  const THUMB = 16;
+  const [w, setW] = useState(1);
+  const live = useRef({});
+  const startX = useRef(0);
+  useEffect(() => { live.current = { min, max, step, w, onChange, onLock, disabled }; });
+
+  const toVal = (x) => {
+    const { min: lo, max: hi, step: st, w: width } = live.current;
+    const pct = clamp((x - THUMB / 2) / (width - THUMB), 0, 1);
+    return clamp(Math.round((pct * (hi - lo)) / st) * st + lo, lo, hi);
+  };
+
+  // Built once; reads `live` at gesture time, never during render.
+  const [pan] = useState(
+    // eslint-disable-next-line react-hooks/refs
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => !live.current.disabled,
+        onMoveShouldSetPanResponder: () => !live.current.disabled,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: (e) => {
+          live.current.onLock?.(true);
+          startX.current = e.nativeEvent.locationX;
+          live.current.onChange(toVal(startX.current));
+        },
+        onPanResponderMove: (_, g) => live.current.onChange(toVal(startX.current + g.dx)),
+        onPanResponderRelease: () => live.current.onLock?.(false),
+        onPanResponderTerminate: () => live.current.onLock?.(false),
+      }),
+  );
+
+  const left = ((value - min) / (max - min)) * (w - THUMB);
+  return (
+    <View {...pan.panHandlers} onLayout={(e) => setW(e.nativeEvent.layout.width)}
+      accessible accessibilityRole="adjustable" accessibilityLabel={label}
+      accessibilityValue={{ min, max, now: value }}
+      style={{ height: 40, justifyContent: 'center', opacity: disabled ? 0.4 : 1 }}>
+      <View pointerEvents="none" style={{ height: 40, justifyContent: 'center' }}>
+        <View style={s.track} />
+        <View style={[s.thumb, { left, top: 12 }]} />
+      </View>
+    </View>
+  );
+});
+
+/* ───────────────────────── EQ curve (draggable) ───────────────────────── */
+const GH = 240, PAD = 22, K = (GH / 2 - 14) / 120, GRID = [-120, -60, 0, 60, 120];
+const yOf = (v) => GH / 2 - v * K;
+
+function buildPath(xs, ys, w) {
+  const p = [{ x: 0, y: ys[0] }, ...xs.map((x, i) => ({ x, y: ys[i] })), { x: w, y: ys[ys.length - 1] }];
+  let d = `M ${p[0].x} ${p[0].y.toFixed(1)}`;
+  for (let i = 0; i < p.length - 1; i++) {
+    const a = p[i - 1] || p[i], b = p[i], c = p[i + 1], e = p[i + 2] || c;
+    d += ` C ${(b.x + (c.x - a.x) / 6).toFixed(1)} ${(b.y + (c.y - a.y) / 6).toFixed(1)}, ${(c.x - (e.x - b.x) / 6).toFixed(1)} ${(c.y - (e.y - b.y) / 6).toFixed(1)}, ${c.x.toFixed(1)} ${c.y.toFixed(1)}`;
   }
   return d;
 }
 
-/* ───────────────────── Custom sliders (no extra deps) ───────────────────── */
-function VSlider({ value, onChange, onDrag, muted, min = -120, max = 120, step = 5, height = 144 }) {
-  const THUMB = 16;
-  const usable = height - THUMB;
+const EqGraph = memo(function EqGraph({ bands, on, mute, sel, dispatch, onLock }) {
+  const { s, T } = useS();
+  const [w, setW] = useState(0);
   const live = useRef({});
-  // Refs are read, never written, during render — mirror the latest callbacks
-  // after paint so the PanResponder handlers always see fresh values.
-  useEffect(() => {
-    live.current = { onChange, onDrag, min, max, step, usable };
-  }, [onChange, onDrag, min, max, step, usable]);
+  const idx = useRef(0);
   const startY = useRef(0);
+  useEffect(() => { live.current = { w, dispatch, onLock }; });
 
-  const toVal = (y) => {
-    const { min, max, step, usable } = live.current;
-    const pct = 1 - clamp((y - THUMB / 2) / usable, 0, 1);
-    const raw = min + pct * (max - min);
-    return clamp(Math.round((raw - min) / step) * step + min, min, max);
-  };
+  const valAt = (y) => clamp(Math.round((GH / 2 - y) / K / 5) * 5, -120, 120);
 
-  // Created once via lazy useState so the handlers keep a stable reference; they
-  // read live.current at gesture time, which is always fresh by then. The lazy
-  // initializer closes over the `live` ref, which the React compiler flags.
+  // Built once; reads `live` at gesture time, never during render.
   const [pan] = useState(
     // eslint-disable-next-line react-hooks/refs
-    () => PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: (e) => {
-        live.current.onDrag?.(true);
-        startY.current = e.nativeEvent.locationY;
-        live.current.onChange(toVal(startY.current));
-      },
-      onPanResponderMove: (_, g) => live.current.onChange(toVal(startY.current + g.dy)),
-      onPanResponderRelease: () => live.current.onDrag?.(false),
-      onPanResponderTerminate: () => live.current.onDrag?.(false),
-    })
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: (e) => {
+          const { w: width, dispatch: d, onLock: lock } = live.current;
+          const step = (width - PAD * 2) / 9;
+          idx.current = clamp(Math.round((e.nativeEvent.locationX - PAD) / step), 0, 9);
+          startY.current = e.nativeEvent.locationY;
+          lock(true);
+          d({ type: 'set', k: 'sel', v: idx.current });
+          d({ type: 'band', i: idx.current, v: valAt(startY.current) });
+        },
+        onPanResponderMove: (_, g) =>
+          live.current.dispatch({ type: 'band', i: idx.current, v: valAt(startY.current + g.dy) }),
+        onPanResponderRelease: () => live.current.onLock(false),
+        onPanResponderTerminate: () => live.current.onLock(false),
+      }),
   );
 
-  const pct = (value - min) / (max - min);
-  const thumbTop = (1 - pct) * usable;
-  const center = height / 2;
-  const fillTop = Math.min(center, thumbTop + THUMB / 2);
-  const fillH = Math.abs(center - (thumbTop + THUMB / 2));
-  const tint = muted ? C.outline : C.primary;
+  const step = w > 0 ? (w - PAD * 2) / 9 : 0;
+  const geo = useMemo(() => {
+    if (!w) return null;
+    const xs = bands.map((_, i) => PAD + i * step);
+    const ys = bands.map((v, i) => yOf(on && !mute[i] ? v : 0));
+    const d = buildPath(xs, ys, w);
+    return { xs, ys, d, area: `${d} L ${w} ${GH / 2} L 0 ${GH / 2} Z` };
+  }, [bands, on, mute, w, step]);
 
   return (
-    <View {...pan.panHandlers} style={{ width: 34, height }}>
-      <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}>
-        <View style={{ position: 'absolute', left: 14, width: 6, top: 0, bottom: 0, borderRadius: 3, backgroundColor: C.highest }} />
-        <View style={{ position: 'absolute', left: 14, width: 6, top: fillTop, height: fillH, backgroundColor: tint, opacity: muted ? 0.5 : 0.9 }} />
-        <View style={{ position: 'absolute', left: 9, width: 16, top: center, height: 1, backgroundColor: C.outline }} />
-        <View
-          style={{
-            position: 'absolute', left: 9, top: thumbTop, width: THUMB, height: THUMB, borderRadius: 8,
-            backgroundColor: tint, borderWidth: 2, borderColor: C.bg,
-          }}
-        />
+    <View style={{ marginTop: 8 }}>
+      <View {...pan.panHandlers} onLayout={(e) => setW(e.nativeEvent.layout.width)} style={{ height: GH }}
+        accessible accessibilityLabel="Equalizer curve. Drag a point up or down to change its band.">
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          {geo && (
+            <Svg width={w} height={GH}>
+              {GRID.map((v) => (
+                <Line key={v} x1={0} x2={w} y1={yOf(v)} y2={yOf(v)} stroke={T.line} strokeWidth={v ? 1 : 1.5} />
+              ))}
+              <Path d={geo.area} fill={T.acc} fillOpacity={0.1} />
+              <Path d={geo.d} fill="none" stroke={T.ink} strokeWidth={2} strokeLinecap="round" />
+              {geo.xs.map((x, i) => (
+                <Circle key={i} cx={x} cy={geo.ys[i]} r={i === sel ? 9 : 6}
+                  fill={i === sel ? T.acc : T.bg} stroke={i === sel ? T.acc : mute[i] ? T.mute : T.ink} strokeWidth={1.5} />
+              ))}
+            </Svg>
+          )}
+          {GRID.map((v) => (
+            <Text key={v} style={[s.dbTxt, { top: yOf(v) - 14, right: 24 }]}>
+              {v === 0 ? '0 dB' : `${v > 0 ? '+' : '−'}${Math.abs(v / 10)}`}
+            </Text>
+          ))}
+        </View>
+      </View>
+      <View style={{ height: 36, marginTop: 4 }}>
+        {LABELS.map((l, i) => (
+          <Pressable key={l} onPress={() => dispatch({ type: 'set', k: 'sel', v: i })} hitSlop={6}
+            accessibilityLabel={FREQ[i]}
+            style={{ position: 'absolute', left: PAD + i * step - 20, width: 40, height: 36, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: i === sel ? T.ink : T.mute, fontSize: 13, fontWeight: i === sel ? '500' : '300' }}>{l}</Text>
+          </Pressable>
+        ))}
       </View>
     </View>
   );
-}
+});
 
-function HSlider({ value, onChange, onDrag, min, max, step = 1 }) {
-  const THUMB = 18;
-  const [w, setW] = useState(1);
-  const live = useRef({});
-  // Refs are read, never written, during render — mirror the latest callbacks
-  // after paint so the PanResponder handlers always see fresh values.
+/* ───────────────────────── Meters (own timer, only ticks while visible) ───────────────────────── */
+const Meters = memo(function Meters({ running }) {
+  const { s, T } = useS();
+  const [vu, setVu] = useState({ l: 0, r: 0 });
   useEffect(() => {
-    live.current = { onChange, onDrag, min, max, step, w };
-  }, [onChange, onDrag, min, max, step, w]);
-  const startX = useRef(0);
-
-  const toVal = (x) => {
-    const { min, max, step, w } = live.current;
-    const pct = clamp((x - THUMB / 2) / (w - THUMB), 0, 1);
-    return clamp(Math.round((min + pct * (max - min) - min) / step) * step + min, min, max);
-  };
-
-  // Created once via lazy useState so the handlers keep a stable reference; they
-  // read live.current at gesture time, which is always fresh by then. The lazy
-  // initializer closes over the `live` ref, which the React compiler flags.
-  const [pan] = useState(
-    // eslint-disable-next-line react-hooks/refs
-    () => PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: (e) => {
-        live.current.onDrag?.(true);
-        startX.current = e.nativeEvent.locationX;
-        live.current.onChange(toVal(startX.current));
-      },
-      onPanResponderMove: (_, g) => live.current.onChange(toVal(startX.current + g.dx)),
-      onPanResponderRelease: () => live.current.onDrag?.(false),
-      onPanResponderTerminate: () => live.current.onDrag?.(false),
-    })
-  ).current;
-
-  const pct = (value - min) / (max - min);
-  const left = pct * (w - THUMB);
-
+    if (!running) {
+      // Reset state when the meters stop (canonical "reset on prop change").
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setVu({ l: 0, r: 0 });
+      return undefined;
+    }
+    const id = setInterval(() => setVu({ l: 70 + Math.random() * 18, r: 72 + Math.random() * 18 }), 150);
+    return () => clearInterval(id);
+  }, [running]);
   return (
-    <View {...pan.panHandlers} onLayout={(e) => setW(e.nativeEvent.layout.width)} style={{ height: 28, justifyContent: 'center' }}>
-      <View pointerEvents="none" style={{ height: 28, justifyContent: 'center' }}>
-        <View style={{ height: 6, borderRadius: 3, backgroundColor: C.highest }} />
-        <View style={{ position: 'absolute', left: 0, width: left + THUMB / 2, height: 6, borderRadius: 3, backgroundColor: C.primary }} />
-        <View
-          style={{
-            position: 'absolute', left, width: THUMB, height: THUMB, borderRadius: THUMB / 2,
-            backgroundColor: C.primary, borderWidth: 2, borderColor: C.bg,
-          }}
-        />
-      </View>
+    <>
+      {[['Left', vu.l], ['Right', vu.r]].map(([ch, lvl]) => (
+        <View key={ch}>
+          <View style={s.row}>
+            <Text style={s.small}>{ch}</Text>
+            <Text style={s.strong}>{lvl ? `${(-(100 - lvl) * 0.16).toFixed(1).replace('-', '−')} dBFS` : '−'}</Text>
+          </View>
+          <View style={s.meter}><View style={{ height: 2, width: `${lvl}%`, backgroundColor: T.ink }} /></View>
+        </View>
+      ))}
+    </>
+  );
+});
+
+/* ───────────────────────── Modules ───────────────────────── */
+const Module = ({ title, desc, children }) => {
+  const { s } = useS();
+  return (
+    <View style={s.mod}>
+      <Text style={s.modTitle}>{title}</Text>
+      <Text style={s.modDesc}>{desc}</Text>
+      {children}
     </View>
   );
-}
+};
 
-/* ───────────────────────── Small pieces ───────────────────────── */
-const Icon = ({ name, size = 20, color = C.primary }) => <MaterialIcons name={name} size={size} color={color} />;
+const Soundstage = memo(function Soundstage({ crossfeed, width, room, dispatch, onLock }) {
+  const { s } = useS();
+  const onW = useCallback((v) => dispatch({ type: 'set', k: 'width', v }), [dispatch]);
+  const onRoom = useCallback((v) => dispatch({ type: 'set', k: 'room', v }), [dispatch]);
+  return (
+    <Module title="Soundstage" desc="Blend left and right channels the way ears hear a room.">
+      <View style={[s.row, { alignItems: 'center' }]}>
+        <Text style={s.small}>Crossfeed</Text>
+        <Pill label={crossfeed ? 'On' : 'Off'} on={crossfeed} onPress={() => dispatch({ type: 'toggle', k: 'crossfeed' })} />
+      </View>
+      <View style={s.row}><Text style={s.small}>Width</Text><Text style={s.strong}>{width}%</Text></View>
+      <Slider value={width} min={0} max={150} onChange={onW} onLock={onLock} disabled={!crossfeed} label="Soundstage width" />
+      <Seg options={ROOMS} index={room} onSelect={onRoom} />
+    </Module>
+  );
+});
 
-const Card = ({ children, className = '' }) => (
-  <View className={`rounded-2xl bg-[#1b1b1e] p-4 ${className}`} style={{ elevation: 4 }}>
-    {children}
-  </View>
-);
+const Warmth = memo(function Warmth({ drive, harm, dispatch, onLock }) {
+  const { s } = useS();
+  const onD = useCallback((v) => dispatch({ type: 'set', k: 'drive', v }), [dispatch]);
+  const onH = useCallback((v) => dispatch({ type: 'set', k: 'harm', v }), [dispatch]);
+  return (
+    <Module title="Warmth" desc="Add tube-style harmonics to fill out the sound.">
+      <View style={s.row}><Text style={s.small}>Drive</Text><Text style={s.strong}>+{(drive / 10).toFixed(1)} dB</Text></View>
+      <Slider value={drive} min={0} max={60} onChange={onD} onLock={onLock} label="Drive" />
+      <Seg options={HARMS} index={harm} onSelect={onH} />
+    </Module>
+  );
+});
 
-const Pill = ({ children, active, onPress, className = '' }) => (
-  <Pressable
-    onPress={onPress}
-    className={`items-center justify-center rounded-xl px-3 py-2 active:opacity-70 ${active ? 'bg-[#2a2a2d]' : 'bg-[#1f1f22]'} ${className}`}
-  >
-    <Text className={`text-[12px] font-semibold ${active ? 'text-[#ffc174]' : 'text-[#d8c3ad]'}`}>{children}</Text>
-  </Pressable>
-);
+const Phase = memo(function Phase({ phase, dispatch }) {
+  const onP = useCallback((v) => dispatch({ type: 'set', k: 'phase', v }), [dispatch]);
+  return (
+    <Module title="Phase"
+      desc={phase ? 'Lowest delay, with small timing shifts.' : 'Keeps timing exact across every frequency.'}>
+      <Seg options={PHASES} index={phase} onSelect={onP} />
+    </Module>
+  );
+});
+
+const Output = memo(function Output({ preamp, running, dispatch, onLock }) {
+  const { s } = useS();
+  const onG = useCallback((v) => dispatch({ type: 'set', k: 'preamp', v }), [dispatch]);
+  return (
+    <Module title="Output" desc="Set overall level. Clipping protection is on.">
+      <View style={s.row}><Text style={s.small}>Gain</Text><Text style={s.strong}>{fmt(preamp)} dB</Text></View>
+      <Slider value={preamp} min={-120} max={60} onChange={onG} onLock={onLock} label="Output gain" />
+      <Meters running={running} />
+    </Module>
+  );
+});
+
+/* Mounts its children only once the section scrolls near the viewport. */
+const Lazy = memo(function Lazy({ reach, minHeight, children }) {
+  const { s } = useS();
+  const [top, setTop] = useState(null);
+  const show = top !== null && top < reach; // reach only grows, so this never flips back
+  return (
+    <View onLayout={(e) => setTop(e.nativeEvent.layout.y)} style={show ? undefined : { minHeight }}>
+      {show ? children : <View style={[s.rule, { marginTop: minHeight / 2 }]} />}
+    </View>
+  );
+});
 
 /* ───────────────────────── Screen ───────────────────────── */
 export default function AudioSettingsScreen({ onBack }) {
+  const { s, T } = useS();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { width: winW, height: winH } = useWindowDimensions();
   const isFocused = useIsFocused();
+  const appActive = useAppActive();
+  const [st, dispatch] = useReducer(reducer, INIT);
+  const scrollRef = useRef(null);
+  const [reach, setReach] = useState(winH + 300);
+  const reachRef = useRef(winH + 300);
+
   const goBack = onBack ?? (() => router.back());
+  const onLock = useCallback((locked) => scrollRef.current?.setNativeProps({ scrollEnabled: !locked }), []);
+  const onScroll = useCallback((e) => {
+    const { contentOffset, layoutMeasurement } = e.nativeEvent;
+    const b = contentOffset.y + layoutMeasurement.height + 300;
+    if (b > reachRef.current + 80) { reachRef.current = b; setReach(b); }
+  }, []);
 
-  // EQ state
-  const [profiles, setProfiles] = useState({ A: [...PRESETS['Audiophile Reference']], B: [...PRESETS['Studio Flat']] });
-  const [names, setNames] = useState({ A: 'Audiophile Reference', B: 'Studio Flat' });
-  const [ab, setAb] = useState('A');
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [masterOn, setMasterOn] = useState(true);
-  const [muted, setMuted] = useState(Array(10).fill(false));
-  const [selNode, setSelNode] = useState(2);
+  const bands = st.prof[st.ab];
+  const effVal = st.on && !st.mute[st.sel] ? bands[st.sel] : 0;
+  const running = isFocused && appActive && st.on && st.playing;
+  const bigSize = Math.min(150, Math.round(winW * 0.28));
+  const presetName = st.name[st.ab];
+  const presetKeys = useMemo(() => Object.keys(PRESETS), []);
 
-  // DSP modules
-  const [crossfeed, setCrossfeed] = useState(true);
-  const [width, setWidth] = useState(115);
-  const [irMode, setIrMode] = useState(0);
-  const [drive, setDrive] = useState(28);
-  const [harmonic, setHarmonic] = useState(0);
-  const [linearPhase, setLinearPhase] = useState(true);
-  const [preamp, setPreamp] = useState(0);
-
-  // Transport / meters
-  const [playing, setPlaying] = useState(true);
-  const [rta, setRta] = useState([35, 55, 70, 45, 38, 50, 62, 75, 58, 48, 42, 36, 30, 22]);
-  const [vu, setVu] = useState({ l: 78, r: 82 });
-  const [locked, setLocked] = useState(false);
-
-  const bands = profiles[ab];
-  const presetName = names[ab];
-
-  const setBand = (i, v) => {
-    setProfiles((p) => {
-      const arr = [...p[ab]];
-      arr[i] = v;
-      return { ...p, [ab]: arr };
-    });
-    setNames((n) => ({ ...n, [ab]: 'Custom Curve' }));
-  };
-
-  const applyPreset = (name) => {
-    setProfiles((p) => ({ ...p, [ab]: [...PRESETS[name]] }));
-    setNames((n) => ({ ...n, [ab]: name }));
-    setMenuOpen(false);
-  };
-
-  const nudgeAll = (delta) => {
-    setProfiles((p) => ({ ...p, [ab]: p[ab].map((v) => clamp(v + delta, -120, 120)) }));
-    setNames((n) => ({ ...n, [ab]: 'Custom Curve' }));
-  };
-
-  // Effective values (bypass + muted bands read as flat)
-  const eff = useMemo(() => bands.map((v, i) => (masterOn && !muted[i] ? v : 0)), [bands, masterOn, muted]);
-  const ys = NODES.map((n) => CY - eff[n.band] * SCALE);
-  const curve = useMemo(() => buildCurve(ys), [eff]);
-  const area = `${curve} L ${VB_W} ${VB_H} L 0 ${VB_H} Z`;
-  const node = NODES[selNode];
-
-  // Live RTA + VU
-  useEffect(() => {
-    if (!isFocused) return undefined;
-    const id = setInterval(() => {
-      if (!masterOn || !playing) {
-        setRta((a) => a.map(() => 6));
-        setVu({ l: 4, r: 4 });
-        return;
-      }
-      setRta((a) => a.map(() => Math.floor(Math.random() * 65) + 15));
-      setVu({ l: 70 + Math.random() * 18, r: 72 + Math.random() * 18 });
-    }, 150);
-    return () => clearInterval(id);
-  }, [masterOn, playing, isFocused]);
-
-  const peak = Math.max(vu.l, vu.r);
-  const dbfs = (-(100 - peak) * 0.16).toFixed(1);
-  const valColor = (v) => (v > 0 ? C.primary : v < 0 ? C.pink : C.muted);
+  // Nothing heavy renders while the screen is hidden; state lives above, so it is preserved.
+  if (!isFocused) return <View style={s.root} />;
 
   return (
-    <View className="flex-1 bg-[#131316]">
-      {/* ───── Header ───── */}
-      <View
-        className="absolute left-0 right-0 top-0 z-50 bg-[#131316]/95"
-        style={{ paddingTop: insets.top, elevation: 8 }}
-      >
-        <View className="h-16 flex-row items-center justify-between px-5">
-          <View className="min-w-0 flex-1 flex-row items-center gap-2">
-            <Pressable
-              onPress={goBack}
-              hitSlop={8}
-              className="-ml-1 h-11 w-11 items-center justify-center rounded-full active:bg-[#2a2a2d]"
-            >
-              <Icon name="arrow-back" size={24} color={C.text} />
+    <View style={s.root}>
+      <View style={[s.header, { paddingTop: insets.top }]}>
+        <View style={s.headerRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Pressable onPress={goBack} style={s.hit} accessibilityLabel="Go back">
+              <MaterialIcons name="arrow-back" size={24} color={T.ink} />
             </Pressable>
-            <Image source={{ uri: IMG.logo }} style={{ height: 28, width: 62 }} resizeMode="contain" />
-            <Text numberOfLines={1} className="text-[18px] font-semibold text-[#e5e1e6]">
-              Audio Settings
-            </Text>
+            <Text style={s.title}>Parametric equalizer</Text>
           </View>
-          <View className="flex-row items-center">
-            <Pressable className="h-11 w-11 items-center justify-center rounded-full active:bg-[#2a2a2d]">
-              <Icon name="more-vert" size={22} color={C.muted} />
-            </Pressable>
-            <Pressable className="h-11 w-11 items-center justify-center rounded-full active:opacity-80">
-              <Image source={{ uri: IMG.avatar }} className="h-8 w-8 rounded-full bg-[#353438]" />
-            </Pressable>
-          </View>
+          <Pressable onPress={() => dispatch({ type: 'toggle', k: 'on' })} style={s.power}
+            accessibilityRole="switch" accessibilityState={{ checked: st.on }}>
+            <View style={[s.dot, st.on && s.dotOn]} />
+            <Text style={s.strong}>{st.on ? 'Active' : 'Bypassed'}</Text>
+          </Pressable>
         </View>
       </View>
 
-      {/* ───── Content ───── */}
-      <ScrollView
-        scrollEnabled={!locked}
-        showsVerticalScrollIndicator={false}
-        onScrollBeginDrag={() => setMenuOpen(false)}
-        contentContainerStyle={{ paddingTop: insets.top + 64, paddingBottom: insets.bottom + 110 }}
-      >
-        {/* Title + master + quick tools */}
-        <View className="px-5 pb-4 pt-2" style={{ zIndex: 30, elevation: 30 }}>
-          <View className="flex-row items-start justify-between gap-2">
-            <View className="min-w-0 flex-1">
-              <View className="flex-row items-center gap-2">
-                <View
-                  className="h-2 w-2 animate-pulse rounded-full bg-[#f59e0b]"
-                  style={{ shadowColor: C.amber, shadowOpacity: 0.9, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } }}
-                />
-                <Text className="font-mono text-[12px] font-medium uppercase tracking-wider text-[#ffc174]">DSP Audio Engine</Text>
-              </View>
-              <Text numberOfLines={1} className="mt-0.5 text-[22px] font-semibold tracking-tight text-[#e5e1e6]">
-                Parametric Equalizer
-              </Text>
-              <Text className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-[#d8c3ad]">
-                ES9038PRO Dual Bit-Perfect Master
-              </Text>
-            </View>
+      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} onScroll={onScroll} scrollEventThrottle={64}
+        contentContainerStyle={{ paddingTop: insets.top + 56, paddingBottom: insets.bottom + 120 }}>
+        {/* Hero */}
+        <View style={[s.pad, { paddingTop: 24 }]}>
+          <Text style={s.small}>{FREQ[st.sel]}{st.mute[st.sel] ? ' · muted' : ''}</Text>
+          <Text style={[s.big, { fontSize: bigSize, lineHeight: bigSize * 1.05 }]} numberOfLines={1}
+            accessibilityLiveRegion="polite">
+            {fmt(effVal)}<Text style={s.unit}> dB</Text>
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 6, marginTop: 16 }}>
+            <Pill label="−0.5" onPress={() => dispatch({ type: 'nudge', d: -5 })} hint="Lower this band by 0.5 decibels" />
+            <Pill label="+0.5" onPress={() => dispatch({ type: 'nudge', d: 5 })} hint="Raise this band by 0.5 decibels" />
+            <Pill label={st.mute[st.sel] ? 'Unmute band' : 'Mute band'} on={st.mute[st.sel]}
+              onPress={() => dispatch({ type: 'mute' })} />
+          </View>
+        </View>
 
-            <Pressable
-              onPress={() => setMasterOn((v) => !v)}
-              className="flex-row items-center gap-2 rounded-xl bg-[#2a2a2d] px-3 py-2 active:scale-95"
-              style={{ elevation: 3 }}
-            >
-              <Icon name="power-settings-new" size={22} color={masterOn ? C.primary : C.muted} />
-              <View>
-                <Text className={`font-mono text-[12px] font-medium leading-none ${masterOn ? 'text-[#ffc174]' : 'text-[#d8c3ad]'}`}>
-                  {masterOn ? 'ACTIVE' : 'BYPASS'}
-                </Text>
-                <Text className="font-mono text-[9px] text-[#d8c3ad]">ZERO-PHASE FIR</Text>
-              </View>
+        <View style={s.pad}>
+          <EqGraph bands={bands} on={st.on} mute={st.mute} sel={st.sel} dispatch={dispatch} onLock={onLock} />
+        </View>
+
+        {/* Presets + A/B */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.presets}
+          style={{ marginTop: 16 }}>
+          {presetKeys.map((n) => (
+            <Pressable key={n} onPress={() => dispatch({ type: 'preset', name: n })}
+              style={[s.tab, n === presetName && s.tabOn]}>
+              <Text style={[s.tabTxt, n === presetName && s.tabTxtOn]}>{n}</Text>
             </Pressable>
+          ))}
+          <View style={{ flexDirection: 'row', gap: 4, marginLeft: 8 }}>
+            {['A', 'B'].map((k) => (
+              <Pill key={k} label={`Profile ${k}`} on={st.ab === k} onPress={() => dispatch({ type: 'set', k: 'ab', v: k })} />
+            ))}
           </View>
+        </ScrollView>
+        <View style={[s.rule, { marginTop: 8 }]} />
 
-          {/* Quick tool shelf */}
-          <View className="mt-4">
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="items-center gap-2 pr-2">
-              <Pressable
-                onPress={() => setMenuOpen((v) => !v)}
-                className="flex-row items-center gap-2 rounded-full bg-[#1f1f22] px-3 py-2 active:opacity-70"
-              >
-                <Icon name="tune" size={16} />
-                <Text className="text-[13px] font-semibold text-[#e5e1e6]">{presetName}</Text>
-                <Icon name="expand-more" size={16} color={C.muted} />
-              </Pressable>
-
-              <Pressable
-                onPress={() => setAb((v) => (v === 'A' ? 'B' : 'A'))}
-                className="flex-row items-center gap-2 rounded-full bg-[#1f1f22] px-3 py-2 active:opacity-70"
-              >
-                <Text className="font-mono text-[12px] font-bold text-[#ffc174]">A/B</Text>
-                <Text className="text-[13px] font-semibold text-[#e5e1e6]">Profile {ab}</Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => applyPreset('Studio Flat')}
-                className="flex-row items-center gap-1 rounded-full bg-[#1f1f22] px-3 py-2 active:opacity-70"
-              >
-                <Icon name="restart-alt" size={16} color={C.muted} />
-                <Text className="text-[13px] font-semibold text-[#d8c3ad]">Reset Flat</Text>
-              </Pressable>
-
-              <View className="rounded-full bg-[#1b1b1e] px-3 py-2">
-                <Text className="font-mono text-[10px] uppercase tracking-wider text-[#ffc174]">FIR 4096-Tap</Text>
-              </View>
-            </ScrollView>
-
-            {menuOpen && (
-              <View
-                className="absolute left-0 top-12 w-56 gap-0.5 rounded-xl bg-[#2a2a2d] p-1"
-                style={{ zIndex: 40, elevation: 40, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 12 }}
-              >
-                {Object.keys(PRESETS).map((name) => {
-                  const active = name === presetName;
-                  return (
-                    <Pressable
-                      key={name}
-                      onPress={() => applyPreset(name)}
-                      className={`flex-row items-center justify-between rounded-lg px-3 py-2.5 active:bg-[#39393c] ${active ? 'bg-[#1f1f22]' : ''}`}
-                    >
-                      <Text className={`text-[13px] font-semibold ${active ? 'text-[#ffc174]' : 'text-[#e5e1e6]'}`}>{name}</Text>
-                      {active && <Icon name="check" size={14} />}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
-          </View>
-        </View>
-
-        {/* ───── EQ curve + RTA ───── */}
-        <View className="mb-6 px-5">
-          <View className="gap-2 overflow-hidden rounded-2xl bg-[#0e0e11] p-3" style={{ elevation: 6 }}>
-            {/* HUD */}
-            <View className="flex-row items-center justify-between px-1">
-              <View className="flex-row items-center gap-2">
-                <View className="flex-row items-center gap-1">
-                  <View className="h-1.5 w-1.5 animate-ping rounded-full bg-[#ffc174]" />
-                  <Text className="font-mono text-[10px] text-[#ffc174]">LIVE RTA</Text>
-                </View>
-                <Text className="font-mono text-[10px] text-[#d8c3ad]/60">•</Text>
-                <Text className="font-mono text-[10px] text-[#d8c3ad]">A-CURVE</Text>
-              </View>
-              <View className="flex-row items-center gap-2">
-                <Text className="font-mono text-[10px] font-medium text-[#ffc174]">
-                  {node.name}: {fmt(eff[node.band])}dB
-                </Text>
-                <Text className="font-mono text-[10px] text-[#d8c3ad]/60">Q: 1.41</Text>
-              </View>
-            </View>
-
-            {/* Graph */}
-            <View className="h-44 overflow-hidden rounded-xl bg-[#1b1b1e]/70">
-              {/* Grid */}
-              <Svg width="100%" height="100%" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none" style={{ position: 'absolute', opacity: 0.2 }}>
-                {[8.8, 48.4, 127.6, 167.2].map((y) => (
-                  <Line key={y} x1="0" x2={VB_W} y1={y} y2={y} stroke={C.muted} strokeWidth="0.7" strokeDasharray="2 2" />
-                ))}
-                <Line x1="0" x2={VB_W} y1={CY} y2={CY} stroke={C.primary} strokeWidth="1" />
-                {[43, 101, 162, 223, 288, 338].map((x) => (
-                  <Line key={x} x1={x} x2={x} y1="0" y2={VB_H} stroke={C.muted} strokeWidth="0.5" strokeDasharray="2 3" />
-                ))}
-              </Svg>
-
-              {/* RTA bars */}
-              <View pointerEvents="none" className="absolute inset-x-2 bottom-0 top-6 flex-row items-end px-2" style={{ opacity: 0.4 }}>
-                {rta.map((h, i) => (
-                  <View
-                    key={i}
-                    className="mx-[1px] flex-1 rounded-t-sm bg-[#ffc174]"
-                    style={{ height: `${h}%`, opacity: 0.35 + (h / 100) * 0.65 }}
-                  />
-                ))}
-              </View>
-
-              {/* Curve */}
-              <Svg width="100%" height="100%" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none" style={{ position: 'absolute' }}>
-                <Defs>
-                  <LinearGradient id="curveGradient" x1="0" y1="0" x2="0" y2="1">
-                    <Stop offset="0" stopColor={C.amber} stopOpacity="0.3" />
-                    <Stop offset="1" stopColor={C.amber} stopOpacity="0" />
-                  </LinearGradient>
-                </Defs>
-                <Path d={area} fill="url(#curveGradient)" />
-                <Path d={curve} fill="none" stroke={C.primary} strokeOpacity="0.25" strokeWidth="7" strokeLinecap="round" />
-                <Path d={curve} fill="none" stroke={C.primary} strokeWidth="2.5" strokeLinecap="round" />
-                {NODES.map((n, i) => (
-                  <Circle
-                    key={n.name}
-                    cx={n.x}
-                    cy={ys[i]}
-                    r={i === selNode ? 8 : 6}
-                    fill={C.amber}
-                    stroke="#ffffff"
-                    strokeWidth="1.5"
-                    onPress={() => setSelNode(i)}
-                  />
-                ))}
-              </Svg>
-
-              {/* dB guide */}
-              <View pointerEvents="none" className="absolute bottom-2 right-2 top-2 items-end justify-between" style={{ opacity: 0.7 }}>
-                <Text className="font-mono text-[9px] text-[#d8c3ad]">+12</Text>
-                <Text className="font-mono text-[9px] text-[#d8c3ad]">+6</Text>
-                <Text className="font-mono text-[9px] font-bold text-[#ffc174]">0dB</Text>
-                <Text className="font-mono text-[9px] text-[#d8c3ad]">-6</Text>
-                <Text className="font-mono text-[9px] text-[#d8c3ad]">-12</Text>
-              </View>
-            </View>
-
-            {/* Frequency legend */}
-            <View className="flex-row items-center justify-between px-1">
-              {['20Hz', '60', '125', '250', '500', '1kHz', '2k', '4k', '8k', '16k'].map((f) => (
-                <Text key={f} className={`font-mono text-[9px] uppercase ${f === '1kHz' ? 'font-semibold text-[#ffc174]' : 'text-[#d8c3ad]'}`}>
-                  {f}
-                </Text>
-              ))}
-            </View>
-          </View>
-        </View>
-
-        {/* ───── 10-band rack ───── */}
-        <View className="mb-6 px-5">
-          <Card>
-            <View className="mb-4 flex-row items-center justify-between">
-              <View className="flex-row items-center gap-2">
-                <Icon name="equalizer" size={18} />
-                <Text className="text-[16px] font-semibold text-[#e5e1e6]">10-Band ISO Rack</Text>
-              </View>
-              <View className="rounded-full bg-[#1f1f22] px-2.5 py-1">
-                <Text className="font-mono text-[10px] text-[#ffc174]">±12.0 dB</Text>
-              </View>
-            </View>
-
-            <View className="flex-row items-stretch justify-between">
-              {bands.map((v, i) => (
-                <View key={BAND_LABELS[i]} className="items-center gap-1" style={{ width: 34, opacity: muted[i] ? 0.55 : 1 }}>
-                  <Text className="font-mono text-[10px] font-semibold" style={{ color: valColor(v) }}>
-                    {fmt(v)}
-                  </Text>
-                  <VSlider value={v} muted={muted[i]} onChange={(nv) => setBand(i, nv)} onDrag={setLocked} />
-                  <Text className="font-mono text-[11px] font-medium text-[#e5e1e6]">{BAND_LABELS[i]}</Text>
-                  <Pressable
-                    onPress={() => setMuted((m) => m.map((x, j) => (j === i ? !x : x)))}
-                    className={`h-6 w-6 items-center justify-center rounded ${muted[i] ? 'bg-[#ffc174]' : 'bg-[#1f1f22]'}`}
-                  >
-                    <Text className={`font-mono text-[10px] ${muted[i] ? 'text-[#472a00]' : 'text-[#d8c3ad]'}`}>Q</Text>
-                  </Pressable>
-                </View>
-              ))}
-            </View>
-
-            <View className="mt-3 flex-row items-center justify-between pt-1">
-              <View className="flex-row items-center gap-1">
-                <Icon name="waves" size={16} color={C.muted} />
-                <Text className="font-mono text-[11px] text-[#d8c3ad]">Constant-Q Mode</Text>
-              </View>
-              <View className="flex-row items-center gap-2">
-                <Pressable onPress={() => nudgeAll(-5)} className="h-7 w-8 items-center justify-center rounded bg-[#1f1f22] active:opacity-70">
-                  <Text className="text-[12px] text-[#e5e1e6]">-0.5</Text>
-                </Pressable>
-                <Text className="font-mono text-[11px] text-[#ffc174]">OFFSET</Text>
-                <Pressable onPress={() => nudgeAll(5)} className="h-7 w-8 items-center justify-center rounded bg-[#1f1f22] active:opacity-70">
-                  <Text className="text-[12px] text-[#e5e1e6]">+0.5</Text>
-                </Pressable>
-              </View>
-            </View>
-          </Card>
-        </View>
-
-        {/* ───── Acoustic architectures ───── */}
-        <View className="mb-6 gap-3 px-5">
-          <View className="flex-row items-center justify-between px-1">
-            <Text className="text-[18px] font-semibold text-[#e5e1e6]">Acoustic Architectures</Text>
-            <Text className="font-mono text-[12px] uppercase text-[#ffc174]">64-Bit Float</Text>
-          </View>
-
-          {/* Spatial */}
-          <Card className="gap-3">
-            <View className="flex-row items-center justify-between">
-              <View className="flex-1 flex-row items-center gap-2">
-                <Icon name="surround-sound" />
-                <View className="flex-1">
-                  <Text className="text-[15px] font-semibold leading-tight text-[#e5e1e6]">Spatial Soundfield & Crossfeed</Text>
-                  <Text className="text-[12px] text-[#d8c3ad]">Binaural acoustic HRTF ear simulation</Text>
-                </View>
-              </View>
-              <Switch
-                value={crossfeed}
-                onValueChange={setCrossfeed}
-                trackColor={{ false: C.highest, true: C.amber }}
-                thumbColor={crossfeed ? C.primary : C.muted}
-              />
-            </View>
-
-            <View style={{ opacity: crossfeed ? 1 : 0.45 }}>
-              <View className="mb-0.5 flex-row justify-between">
-                <Text className="font-mono text-[12px] text-[#d8c3ad]">Soundstage Width</Text>
-                <Text className="font-mono text-[12px] font-bold text-[#ffc174]">{width}%</Text>
-              </View>
-              <HSlider value={width} min={0} max={150} onChange={setWidth} onDrag={setLocked} />
-            </View>
-
-            <View className="flex-row gap-1.5">
-              {['Studio Room', 'Concert Hall', 'Intimate Club'].map((label, i) => (
-                <Pressable
-                  key={label}
-                  onPress={() => setIrMode(i)}
-                  className={`flex-1 items-center rounded-lg px-1 py-2 active:opacity-70 ${irMode === i ? 'bg-[#2a2a2d]' : 'bg-[#1f1f22]'}`}
-                >
-                  <Text className={`font-mono text-[11px] ${irMode === i ? 'text-[#ffc174]' : 'text-[#d8c3ad]'}`}>{label}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </Card>
-
-          {/* Saturator */}
-          <Card className="gap-3">
-            <View className="flex-row items-center justify-between">
-              <View className="flex-1 flex-row items-center gap-2">
-                <Icon name="graphic-eq" />
-                <View className="flex-1">
-                  <Text className="text-[15px] font-semibold leading-tight text-[#e5e1e6]">Analog Harmonic Saturator</Text>
-                  <Text className="text-[12px] text-[#d8c3ad]">Class-A Triode 300B warmth emulation</Text>
-                </View>
-              </View>
-              <View className="rounded-full bg-[#1f1f22] px-2 py-0.5">
-                <Text className="font-mono text-[10px] text-[#ffc174]">THD 0.08%</Text>
-              </View>
-            </View>
-
-            <View>
-              <View className="mb-0.5 flex-row justify-between">
-                <Text className="font-mono text-[12px] text-[#d8c3ad]">Drive Intensity</Text>
-                <Text className="font-mono text-[12px] font-bold text-[#ffc174]">+{(drive / 10).toFixed(1)} dB</Text>
-              </View>
-              <HSlider value={drive} min={0} max={60} onChange={setDrive} onDrag={setLocked} />
-            </View>
-
-            <View className="flex-row gap-2">
-              {['2nd Order (Silky Even)', '3rd Order (Punch Odd)'].map((label, i) => (
-                <Pressable
-                  key={label}
-                  onPress={() => setHarmonic(i)}
-                  className={`flex-1 items-center rounded-lg py-2 active:opacity-70 ${harmonic === i ? 'bg-[#2a2a2d]' : 'bg-[#1f1f22]'}`}
-                >
-                  <Text className={`font-mono text-[11px] ${harmonic === i ? 'text-[#ffc174]' : 'text-[#d8c3ad]'}`}>{label}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </Card>
-
-          {/* Phase */}
-          <Card>
-            <View className="flex-row items-center justify-between">
-              <View className="flex-1 flex-row items-center gap-2">
-                <Icon name="filter-vintage" />
-                <View className="flex-1">
-                  <Text className="text-[15px] font-semibold leading-tight text-[#e5e1e6]">FIR Phase Coherence</Text>
-                  <Text className="text-[12px] text-[#d8c3ad]">
-                    {linearPhase ? 'Linear Phase (0° Phase Distortion)' : 'Minimum Phase (Low Latency)'}
-                  </Text>
-                </View>
-              </View>
-              <Pill active={linearPhase} onPress={() => setLinearPhase((v) => !v)}>
-                {linearPhase ? 'Linear Phase' : 'Min Phase'}
-              </Pill>
-            </View>
-          </Card>
-        </View>
-
-        {/* ───── DAC + output stage ───── */}
-        <View className="mb-6 px-5">
-          <Card className="gap-4">
-            <View className="flex-row items-center justify-between rounded-xl bg-[#0e0e11] p-3">
-              <View className="flex-1 flex-row items-center gap-2">
-                <Icon name="developer-board" size={22} />
-                <View className="flex-1">
-                  <Text className="text-[14px] font-semibold leading-tight text-[#e5e1e6]">DSD 11.2MHz / PCM 384kHz</Text>
-                  <Text className="font-mono text-[10px] text-[#d8c3ad]">Native Bit-Perfect Direct Stream</Text>
-                </View>
-              </View>
-              <View className="items-end">
-                <Text className="font-mono text-[11px] font-semibold text-[#ffc174]">32-Bit Dual ES9038</Text>
-                <Text className="font-mono text-[10px] text-[#d8c3ad]">Jitter &lt; 0.04ps</Text>
-              </View>
-            </View>
-
-            <View>
-              <View className="flex-row items-center justify-between">
-                <Text className="font-mono text-[13px] text-[#e5e1e6]">Master Pre-Amp Gain</Text>
-                <Text className="font-mono text-[12px] font-semibold text-[#ffc174]">
-                  {preamp > 0 ? '+' : ''}
-                  {(preamp / 10).toFixed(1)} dB
-                </Text>
-              </View>
-              <HSlider value={preamp} min={-120} max={60} onChange={setPreamp} onDrag={setLocked} />
-              <View className="flex-row items-center justify-between">
-                <Text className="font-mono text-[10px] text-[#d8c3ad]">-12 dB</Text>
-                <View className="flex-row items-center gap-1">
-                  <Icon name="security" size={12} />
-                  <Text className="font-mono text-[10px] text-[#ffc174]">Auto Clip-Guard Active</Text>
-                </View>
-                <Text className="font-mono text-[10px] text-[#d8c3ad]">+6 dB</Text>
-              </View>
-            </View>
-
-            <View className="gap-1.5">
-              <View className="flex-row justify-between">
-                <Text className="font-mono text-[10px] text-[#d8c3ad]">PEAK VU LEVEL</Text>
-                <Text className="font-mono text-[10px] text-[#ffc174]">{dbfs} dBFS</Text>
-              </View>
-              {[
-                ['L', vu.l],
-                ['R', vu.r],
-              ].map(([ch, lvl]) => (
-                <View key={ch} className="flex-row items-center gap-2">
-                  <Text className="w-3 font-mono text-[10px] text-[#d8c3ad]">{ch}</Text>
-                  <View className="h-2 flex-1 overflow-hidden rounded-full bg-[#353438]">
-                    <View
-                      className="h-full rounded-full"
-                      style={{ width: `${lvl}%`, backgroundColor: lvl > 88 ? C.pink : lvl > 78 ? C.amber : C.primary }}
-                    />
-                  </View>
-                  <Text className="font-mono text-[9px] text-[#d8c3ad]">0dB</Text>
-                </View>
-              ))}
-            </View>
-          </Card>
-        </View>
+        {/* Modules mount as they approach the viewport */}
+        <Lazy reach={reach} minHeight={260}>
+          <Soundstage crossfeed={st.crossfeed} width={st.width} room={st.room} dispatch={dispatch} onLock={onLock} />
+        </Lazy>
+        <Lazy reach={reach} minHeight={220}>
+          <Warmth drive={st.drive} harm={st.harm} dispatch={dispatch} onLock={onLock} />
+        </Lazy>
+        <Lazy reach={reach} minHeight={140}>
+          <Phase phase={st.phase} dispatch={dispatch} />
+        </Lazy>
+        <Lazy reach={reach} minHeight={280}>
+          <Output preamp={st.preamp} running={running} dispatch={dispatch} onLock={onLock} />
+        </Lazy>
       </ScrollView>
 
-      {/* ───── Mini transport bar ───── */}
-      <View
-        className="absolute bottom-0 left-0 right-0 z-40 flex-row items-center justify-between bg-[#1b1b1e]/95 px-5 pt-2.5"
-        style={{ paddingBottom: insets.bottom + 10, elevation: 16 }}
-      >
-        <View className="min-w-0 flex-1 flex-row items-center gap-3">
-          <View className="h-11 w-11 overflow-hidden rounded-lg bg-[#353438]">
-            <Image source={{ uri: IMG.art }} className="h-full w-full" resizeMode="cover" />
-          </View>
-          <View className="min-w-0 flex-1">
-            <Text numberOfLines={1} className="text-[14px] font-semibold text-[#e5e1e6]">Obsidian Resonance</Text>
-            <Text numberOfLines={1} className="text-[12px] text-[#d8c3ad]">Kiasmos • DSD 11.2MHz Direct</Text>
-          </View>
+      {/* Transport */}
+      <View style={[s.bar, { paddingBottom: insets.bottom + 12 }]}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text numberOfLines={1} style={[s.strong, { fontWeight: '500', fontSize: 14 }]}>Obsidian Resonance</Text>
+          <Text numberOfLines={1} style={[s.small, { fontSize: 12 }]}>Kiasmos · DSD 11.2 MHz</Text>
         </View>
-        <View className="flex-row items-center gap-2">
-          <Pressable className="h-9 w-9 items-center justify-center rounded-full active:opacity-60">
-            <Icon name="skip-previous" size={22} color={C.muted} />
-          </Pressable>
-          <Pressable
-            onPress={() => setPlaying((p) => !p)}
-            className="h-11 w-11 items-center justify-center rounded-full bg-[#f59e0b] active:scale-95"
-            style={{ shadowColor: C.amber, shadowOpacity: 0.5, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 8 }}
-          >
-            <Icon name={playing ? 'pause' : 'play-arrow'} size={26} color={C.onPrimary} />
-          </Pressable>
-          <Pressable className="h-9 w-9 items-center justify-center rounded-full active:opacity-60">
-            <Icon name="skip-next" size={22} color={C.muted} />
-          </Pressable>
-        </View>
+        <Pressable onPress={() => dispatch({ type: 'toggle', k: 'playing' })} style={s.play}
+          accessibilityLabel={st.playing ? 'Pause' : 'Play'}>
+          <MaterialIcons name={st.playing ? 'pause' : 'play-arrow'} size={26} color={T.bg} />
+        </Pressable>
       </View>
     </View>
   );

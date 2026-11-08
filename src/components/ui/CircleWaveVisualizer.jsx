@@ -6,282 +6,343 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { View, Text } from "react-native";
-import Svg, {
-  Path,
-  Circle,
-  G,
-  Defs,
-  ClipPath,
-  RadialGradient,
-  Stop,
-} from "react-native-svg";
-
-// USE THIS
-
-// import WaveVisualizer from "../../components/subComponents/WaveVisualizer";
-
-// <WaveVisualizer playing={isPlaying} size={300} label="Total hours" value="12,340h" />
+import { AppState, StyleSheet, Text, View } from "react-native";
+import { useIsFocused } from "expo-router";
+import Svg, { Circle } from "react-native-svg";
+import Animated, {
+  useAnimatedProps,
+  useAnimatedStyle,
+  useFrameCallback,
+  useReducedMotion,
+  useSharedValue,
+} from "react-native-reanimated";
 
 /**
- * WaveVisualizer
- * A ring of "water" that behaves like real waves: every point is a spring
- * joined to its two neighbours, so a push travels around the full 360 degrees,
- * bounces back and slowly dies out. Three rings with different wave speeds
- * are stacked and painted with a rotating red / cream / blue gradient.
+ * WaveVisualizer: concentric groove rings with a ripple of light.
+ *
+ * Twenty thin rings sit around an empty centre. Each ring is a spring joined
+ * to its neighbours, so a kick at the centre travels outward through the rings,
+ * bunching and lighting them as it passes, then fades at the edge.
+ *
+ * The whole simulation runs on the UI thread (useFrameCallback), so React
+ * never re-renders while it animates. Meant for a dark surface.
  *
  * Props
- *  - playing      boolean  song is playing -> beat-driven waves (default false)
- *  - level        number   OPTIONAL real audio level 0..1. When given, the
- *                          waves follow it instead of the built-in beat.
+ *  - playing      boolean  beat-driven ripples (default false = calm)
+ *  - level        number   OPTIONAL real audio level 0..1, replaces the built-in beat
  *  - bpm          number   tempo of the built-in beat (default 110)
- *  - energy       number   overall wave strength, 1 = normal (default 1)
+ *  - energy       number   overall strength, 1 = normal
  *  - size         number   width/height in px (default 300)
- *  - label        string   small text in the centre
- *  - value        string   big text in the centre
- *  - interactive  boolean  touch / drag pushes the water (default true)
+ *  - label, value string   centre text (trailing letters of value become a small unit)
+ *  - interactive  boolean  touch / drag sends a ripple (default true)
+ *  - active       boolean  pass your visibility flag (default true)
  */
 
-/* ───────────── physics constants ───────────── */
+/* ------------------------------------------------------------------ */
+/* Constants (module scope: allocated once)                            */
+/* ------------------------------------------------------------------ */
 
-const N = 180; // points around the ring
-const TAU = Math.PI * 2;
-const WEDGES = 48; // colour slices used to fake a conic gradient
+const FONT = { thin: "Outfit_200ExtraLight", light: "Outfit_300Light" };
 
-// c = wave speed, k = pull back to rest, d = damping
-const LAYERS = [
-  {
-    c: 0.36,
-    k: 0.0035,
-    d: 0.016,
-    amp: 1.0,
-    rot: 0.0,
-    rs: 0.1,
-    shift: 0.0,
-    op: 0.9,
-  },
-  {
-    c: 0.28,
-    k: 0.0055,
-    d: 0.021,
-    amp: 0.8,
-    rot: 2.1,
-    rs: -0.07,
-    shift: 0.12,
-    op: 0.65,
-  },
-  {
-    c: 0.2,
-    k: 0.0085,
-    d: 0.028,
-    amp: 0.62,
-    rot: 4.2,
-    rs: 0.05,
-    shift: 0.27,
-    op: 0.5,
-  },
-];
+const M = 20; // rings
+const RINGS = Array.from({ length: M }, (_, i) => i);
 
-const PALETTE = [
-  [0, [224, 69, 58]],
-  [0.1, [239, 122, 78]],
-  [0.2, [246, 217, 168]],
-  [0.34, [255, 241, 214]],
-  [0.45, [201, 182, 239]],
-  [0.56, [111, 120, 234]],
-  [0.68, [59, 42, 140]],
-  [0.8, [36, 21, 64]],
-  [0.9, [122, 36, 48]],
-  [1, [224, 69, 58]],
-];
+// Wave along the radius: c = speed, k = pull to rest, d = damping
+const WC = 0.07;
+const WK = 0.002;
+const WD = 0.012;
+const ABSORB_FROM = M - 6; // outer rings soak up the wave
 
-const colorAt = (t) => {
-  const u = ((t % 1) + 1) % 1;
-  for (let i = 1; i < PALETTE.length; i++) {
-    const [p1, c1] = PALETTE[i];
-    if (u <= p1) {
-      const [p0, c0] = PALETTE[i - 1];
-      const f = (u - p0) / (p1 - p0 || 1);
-      const ch = (k) => Math.round(c0[k] + (c1[k] - c0[k]) * f);
-      return `rgb(${ch(0)},${ch(1)},${ch(2)})`;
-    }
+const VIS_STEP = 1 / 30; // rings are redrawn at ~30 fps
+const PHYS_STEP = 1 / 60; // physics always runs at 60 Hz
+const POKE_GAP_MS = 45;
+
+const INK = "#f3f2ee";
+const MUTE = "#8b909c";
+const ACCENT = "#ff2d55";
+
+const ZERO = new Array(M).fill(0);
+const STATIC_FRAME = Array.from(
+  { length: M },
+  (_, j) => 0.55 * Math.exp(-((j - 3) * (j - 3)) / 9) * Math.cos(j * 0.6),
+);
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+/* ------------------------------------------------------------------ */
+/* Worklet helpers (run on the UI thread, mutate local copies only)    */
+/* ------------------------------------------------------------------ */
+
+function push(v, j0, str, w) {
+  "worklet";
+  const reach = Math.ceil(w * 3);
+  const c = Math.round(j0);
+  for (let d = -reach; d <= reach; d += 1) {
+    const i = c + d;
+    if (i >= 0 && i < M) v[i] += str * Math.exp(-(d * d) / (2 * w * w));
   }
-  return "rgb(224,69,58)";
-};
+}
 
-const mod = (i) => ((i % N) + N) % N;
-
-const createEngine = () => ({
-  layers: LAYERS.map(() => ({
-    h: new Float32Array(N),
-    v: new Float32Array(N),
-  })),
-  t: 0,
-  beatT: 0,
-  bar: 0,
-  bass: 0,
-  prevLevel: 0,
-});
-
-// gaussian push at an angle (radians, 0 = top, clockwise)
-const push = (eng, angle, strength, width) => {
-  const centre = Math.round(((((angle / TAU) % 1) + 1) % 1) * N);
-  const reach = Math.ceil(width * 3);
-
-  eng.layers.forEach((l, li) => {
-    const scale = LAYERS[li].amp;
-    for (let k = -reach; k <= reach; k++) {
-      const i = mod(centre + k);
-      l.v[i] += strength * scale * Math.exp(-(k * k) / (2 * width * width));
-    }
-  });
-};
-
-// lifts the whole ring at once (the "bass" breathing)
-const swell = (eng, strength) => {
-  eng.layers.forEach((l, li) => {
-    for (let i = 0; i < N; i++) l.v[i] += strength * LAYERS[li].amp;
-  });
-};
-
-const stepPhysics = (eng) => {
-  eng.layers.forEach((l, li) => {
-    const { c, k, d } = LAYERS[li];
-    const { h, v } = l;
-
-    for (let i = 0; i < N; i++) {
-      const lap = h[mod(i - 1)] + h[mod(i + 1)] - 2 * h[i];
-      v[i] += c * lap - k * h[i] - d * v[i];
-    }
-    for (let i = 0; i < N; i++) {
-      h[i] += v[i];
-      if (h[i] > 3) h[i] = 3;
-      else if (h[i] < -3) h[i] = -3;
-    }
-  });
-};
-
-/* ───────────── drive: built-in beat / real audio / calm sea ───────────── */
-
-const rand = (a = 1) => Math.random() * a;
-
-const simulateBeat = (eng, dt, bpm, e) => {
-  const eighth = 60 / bpm / 2;
-  eng.beatT += dt;
-
-  while (eng.beatT >= eighth) {
-    eng.beatT -= eighth;
-    eng.bar = (eng.bar + 1) % 16;
-
-    const onBeat = eng.bar % 2 === 0;
-    const beat = eng.bar / 2;
-
-    if (
-      onBeat &&
-      (beat % 4 === 0 ||
-        (beat % 4 === 2 && Math.random() < 0.4) ||
-        (beat % 4 === 3 && Math.random() < 0.3))
-    ) {
-      swell(eng, 0.02 * e);
-      push(eng, rand(TAU), 0.4 * e, 6);
-      eng.bass = 1;
-    }
-
-    if (onBeat && (beat % 4 === 1 || (beat % 4 === 3 && eng.bar % 4 === 2))) {
-      push(
-        eng,
-        Math.PI * (Math.random() < 0.5 ? 0.5 : 1.5) + rand(0.6),
-        0.3 * e,
-        5,
-      );
-    }
-
-    if (!onBeat || Math.random() < 0.5) {
-      for (let k = 0; k < 2; k++) push(eng, rand(TAU), 0.1 * e, 2.5);
-    }
-
-    if (eng.bar === 0 && Math.random() < 0.5) push(eng, rand(TAU), 0.6 * e, 10);
+function stepPhysics(h, v) {
+  "worklet";
+  for (let j = 0; j < M; j += 1) {
+    const l = j === 0 ? h[1] : h[j - 1];
+    const r = j === M - 1 ? 0 : h[j + 1];
+    const damp = WD + (j > ABSORB_FROM ? (j - ABSORB_FROM) * 0.028 : 0);
+    v[j] += WC * (l + r - 2 * h[j]) - WK * h[j] - damp * v[j];
   }
-};
-
-const followLevel = (eng, dt, level, e) => {
-  const rise = level - eng.prevLevel;
-  eng.prevLevel = level;
-
-  // sudden jump in loudness = a beat
-  if (rise > 0.08) {
-    swell(eng, 0.03 * level * e);
-    push(eng, rand(TAU), (0.25 + 0.6 * level) * e, 6);
-    eng.bass = Math.min(1, level * 1.2);
+  for (let j = 0; j < M; j += 1) {
+    h[j] += v[j];
+    if (h[j] > 2) h[j] = 2;
+    else if (h[j] < -2) h[j] = -2;
   }
+}
 
-  // continuous shimmer that grows with loudness
-  if (Math.random() < dt * 24 * level)
-    push(eng, rand(TAU), 0.1 * level * e, 2.5);
-};
+/* ------------------------------------------------------------------ */
+/* Hooks                                                               */
+/* ------------------------------------------------------------------ */
 
-const calmSea = (eng, dt, e) => {
-  const f = dt * 60;
-  for (let s = 0; s < 2; s++) {
-    push(eng, eng.t * (0.25 + s * 0.17) + s * 2.4, 0.012 * e * f, 7 + s * 3);
-  }
-  if (Math.random() < dt * 0.5) push(eng, rand(TAU), 0.09 * e, 7);
-};
+// Single gate: screen focused + app foregrounded + `active` prop.
+function useIsActive(flag = true) {
+  const focused = useIsFocused();
+  const [appActive, setAppActive] = useState(AppState.currentState === "active");
 
-/* ───────────── drawing helpers ───────────── */
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (s) =>
+      setAppActive(s === "active"),
+    );
+    return () => sub.remove();
+  }, []);
 
-const blobPath = (h, R0, A, amp, c) => {
-  const pts = new Array(N);
-  for (let i = 0; i < N; i++) {
-    const a = (i / N) * TAU;
-    const r = R0 + h[i] * A * amp;
-    pts[i] = [c + r * Math.sin(a), c - r * Math.cos(a)];
-  }
+  return flag && focused && appActive;
+}
 
-  const f = (n) => n.toFixed(1);
-  const mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+/* ------------------------------------------------------------------ */
+/* Simulation: one frame callback, everything on the UI thread         */
+/* ------------------------------------------------------------------ */
 
-  const s = mid(pts[N - 1], pts[0]);
-  let d = `M${f(s[0])},${f(s[1])}`;
+function useRippleEngine({ playing, level, bpm, energy, running, reduceMotion }) {
+  const hSV = useSharedValue(ZERO);
+  const vSV = useSharedValue(ZERO);
+  const view = useSharedValue(ZERO); // what the rings actually read (~30 fps)
+  const bassView = useSharedValue(0);
 
-  for (let i = 0; i < N; i++) {
-    const p = pts[i];
-    const e = mid(p, pts[(i + 1) % N]);
-    d += `Q${f(p[0])},${f(p[1])} ${f(e[0])},${f(e[1])}`;
-  }
+  const bassSV = useSharedValue(0);
+  const beatT = useSharedValue(0);
+  const bar = useSharedValue(0);
+  const breathT = useSharedValue(0);
+  const prevLevel = useSharedValue(0);
+  const phys = useSharedValue(0); // physics time accumulator
+  const vis = useSharedValue(0); // visual time accumulator
 
-  return `${d}Z`;
-};
+  const playingSV = useSharedValue(playing);
+  const levelSV = useSharedValue(typeof level === "number" ? level : -1);
+  const bpmSV = useSharedValue(bpm);
+  const energySV = useSharedValue(energy);
+  const pokeSV = useSharedValue({ id: 0, j: 0, str: 0, w: 1 });
+  const pokeSeen = useSharedValue(0);
 
-// static colour slices (memoised, so they are NOT rebuilt every frame)
-const Wedges = memo(function Wedges({ size, shift }) {
-  const c = size / 2;
-  const R = size * 0.62;
+  // Prop changes never restart anything; the worklet reads the new values.
+  useEffect(() => {
+    playingSV.value = playing;
+    levelSV.value = typeof level === "number" ? Math.min(1, Math.max(0, level)) : -1;
+    bpmSV.value = bpm;
+    energySV.value = energy;
+  }, [playing, level, bpm, energy, playingSV, levelSV, bpmSV, energySV]);
 
-  const pt = (a) =>
-    `${(c + R * Math.sin(a)).toFixed(1)},${(c - R * Math.cos(a)).toFixed(1)}`;
+  const frame = useFrameCallback((info) => {
+    "worklet";
+    const dt = Math.min(0.05, (info.timeSincePreviousFrame ?? 16.7) / 1000);
+    const h = hSV.value.slice();
+    const v = vSV.value.slice();
+    const e = energySV.value;
+    let bass = bassSV.value;
+
+    // touch impulse (latest one since the previous frame)
+    const pk = pokeSV.value;
+    if (pk.id !== pokeSeen.value) {
+      pokeSeen.value = pk.id;
+      push(v, pk.j, pk.str * e, pk.w);
+    }
+
+    if (playingSV.value) {
+      const lvl = levelSV.value;
+      if (lvl >= 0) {
+        // follow a real audio level: a sudden rise is a beat
+        const rise = lvl - prevLevel.value;
+        prevLevel.value = lvl;
+        if (rise > 0.08) {
+          push(v, 1, (0.18 + 0.4 * lvl) * e, 1.6);
+          bass = Math.min(1, lvl * 1.2);
+        }
+        if (Math.random() < dt * 20 * lvl) {
+          push(v, 4 + Math.random() * 7, 0.07 * lvl * e, 1.2);
+        }
+      } else {
+        // built-in beat: kick, snare, hats
+        const eighth = 60 / bpmSV.value / 2;
+        let t = beatT.value + dt;
+        let b = bar.value;
+        while (t >= eighth) {
+          t -= eighth;
+          b = (b + 1) % 8;
+          const on = b % 2 === 0;
+          const beat = b / 2;
+          if (on && (beat === 0 || beat === 2)) {
+            push(v, 1, 0.4 * e, 1.6);
+            bass = 1;
+          } else if (on) {
+            push(v, 1.5, 0.2 * e, 1.3);
+            bass = Math.max(bass, 0.4);
+          } else if (Math.random() < 0.65) {
+            push(v, 4 + Math.random() * 7, 0.07 * e, 1.2);
+          }
+        }
+        beatT.value = t;
+        bar.value = b;
+      }
+    } else {
+      // calm: a faint pulse leaves the centre every few seconds
+      const t = breathT.value + dt;
+      if (t > 3.4) {
+        breathT.value = 0;
+        push(v, 1, 0.1 * e, 2.4);
+      } else {
+        breathT.value = t;
+      }
+    }
+
+    // fixed 60 Hz physics, even if the frame time wobbles
+    let acc = phys.value + dt;
+    let n = 0;
+    while (acc >= PHYS_STEP && n < 4) {
+      stepPhysics(h, v);
+      acc -= PHYS_STEP;
+      n += 1;
+    }
+    phys.value = Math.min(acc, PHYS_STEP);
+
+    bass *= Math.pow(0.9, dt * 60);
+    hSV.value = h;
+    vSV.value = v;
+    bassSV.value = bass;
+
+    // only push to the rings at ~30 fps
+    const va = vis.value + dt;
+    if (va >= VIS_STEP - 0.002) {
+      vis.value = 0;
+      view.value = h;
+      bassView.value = bass;
+    } else {
+      vis.value = va;
+    }
+  }, false);
+
+  // Run only while visible. Hidden screen or reduced motion: stop completely.
+  useEffect(() => {
+    if (reduceMotion) {
+      frame.setActive(false);
+      // `view` is a stable shared value; the compiler's immutability flag is a
+      // false positive because this runs inside an effect.
+      // eslint-disable-next-line react-hooks/immutability
+      view.value = STATIC_FRAME;
+      return;
+    }
+    frame.setActive(running);
+  }, [running, reduceMotion, frame, view]);
+
+  return { view, bassView, pokeSV };
+}
+
+/* ------------------------------------------------------------------ */
+/* One ring: animated props only, never re-renders                     */
+/* ------------------------------------------------------------------ */
+
+const Ring = memo(function Ring({ index, view, c, R0, sp, A }) {
+  const base = 0.36 - 0.24 * (index / (M - 1)); // quieter toward the outside
+  const r0 = R0 + index * sp;
+
+  const props = useAnimatedProps(() => {
+    const hj = view.value[index];
+    const e = Math.min(1, Math.abs(hj) * 1.7);
+    const a = Math.min(1, base + e * 0.75);
+    const m = hj > 0 ? e : 0; // crests warm toward the accent
+    const R = Math.round(243 + 12 * m);
+    const G = Math.round(242 - 197 * m);
+    const B = Math.round(238 - 153 * m);
+    return {
+      r: Math.max(1, r0 + hj * A),
+      strokeWidth: 1 + e * 1.1,
+      stroke: `rgb(${R},${G},${B})`,
+      strokeOpacity: a,
+    };
+  }, [r0, A, base]);
 
   return (
-    <>
-      {Array.from({ length: WEDGES }, (_, k) => {
-        const a0 = (k / WEDGES) * TAU - 0.01; // tiny overlap hides seams
-        const a1 = ((k + 1) / WEDGES) * TAU + 0.01;
-
-        return (
-          <Path
-            key={k}
-            d={`M${c},${c}L${pt(a0)}A${R},${R} 0 0 1 ${pt(a1)}Z`}
-            fill={colorAt((k + 0.5) / WEDGES + shift)}
-          />
-        );
-      })}
-    </>
+    <AnimatedCircle
+      cx={c}
+      cy={c}
+      r={r0}
+      fill="none"
+      stroke={INK}
+      strokeWidth={1}
+      strokeOpacity={base}
+      animatedProps={props}
+    />
   );
 });
 
-/* ───────────── component ───────────── */
+/* ------------------------------------------------------------------ */
+/* Centre value: counts up once, the first time it is visible          */
+/* ------------------------------------------------------------------ */
 
-export default function WaveVisualizer({
+const VALUE_RE = /^([^0-9]*)([\d,]+(?:\.\d+)?)(.*)$/;
+
+const formatInt = (n) => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+const CountValue = memo(function CountValue({ value, run, instant, fontSize }) {
+  const m = useMemo(() => VALUE_RE.exec(String(value)), [value]);
+  const target = m ? parseFloat(m[2].replace(/,/g, "")) : 0;
+  const [n, setN] = useState(instant || !m ? target : 0);
+
+  useEffect(() => {
+    if (!m) return undefined;
+    if (instant) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setN(target);
+      return undefined;
+    }
+    if (!run) return undefined;
+    const t0 = Date.now();
+    const id = setInterval(() => {
+      const p = Math.min(1, (Date.now() - t0) / 1300);
+      setN(target * (1 - Math.pow(1 - p, 3)));
+      if (p >= 1) clearInterval(id);
+    }, 33);
+    return () => clearInterval(id);
+  }, [run, instant, target, m]);
+
+  if (!m) {
+    return <Text style={[styles.value, { fontSize }]}>{String(value)}</Text>;
+  }
+
+  const [, prefix, , suffix] = m;
+  return (
+    <Text style={[styles.value, { fontSize, letterSpacing: -fontSize * 0.05 }]}>
+      {prefix}
+      {formatInt(n)}
+      {suffix ? (
+        <Text style={[styles.unit, { fontSize: fontSize * 0.44 }]}>{` ${suffix}`.trimEnd()}</Text>
+      ) : null}
+    </Text>
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* Component                                                           */
+/* ------------------------------------------------------------------ */
+
+function WaveVisualizer({
   playing = false,
   level,
   bpm = 110,
@@ -292,238 +353,134 @@ export default function WaveVisualizer({
   interactive = true,
   active = true,
 }) {
-  const engine = useRef(null);
+  const isActive = useIsActive(active);
+  const reduceMotion = useReducedMotion();
+  const running = isActive && !reduceMotion;
+
+  // Lazy mount: rings are not built until the component has been visible once.
+  // State, not a ref — the SVG and CountValue branches both read it during
+  // render, so it must trigger a re-render the moment the component becomes visible.
+  const [everActive, setEverActive] = useState(false);
   useEffect(() => {
-    if (!engine.current) engine.current = createEngine();
-  }, []);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (isActive) setEverActive(true);
+  }, [isActive]);
 
-  const [uid] = useState(() => Math.random().toString(36).slice(2, 7));
-
-  // latest props, read inside the animation loop. Updated in an effect so the
-  // ref is never written during render (React forbids ref writes in render).
-  const live = useRef({
+  const { view, bassView, pokeSV } = useRippleEngine({
     playing,
     level,
     bpm,
     energy,
-    size,
+    running,
+    reduceMotion,
   });
 
-  useEffect(() => {
-    live.current = {
-      playing,
-      level,
-      bpm,
-      energy,
-      size,
-    };
-  }, [playing, level, bpm, energy, size]);
-  // Render state is a snapshot pushed from the rAF loop, so the engine ref
-  // is never read during render (React forbids ref reads in render).
-  const [snap, setSnap] = useState({
-    t: 0,
-    bass: 0,
-    paths: LAYERS.map(() => ""),
-  });
+  const g = useMemo(() => {
+    const R0 = size * 0.285;
+    const R1 = size * 0.475;
+    const sp = (R1 - R0) / (M - 1);
+    return { c: size / 2, R0, sp, A: sp * 1.5 };
+  }, [size]);
 
-  useEffect(() => {
-    // Don't run any animation when the component is inactive.
-    if (!active) {
-      return undefined;
-    }
-
-    let raf = null;
-
-    let last = 0;
-    let lastUpdate = 0;
-
-    const FRAME_INTERVAL = 1000 / 30;
-
-    const loop = (timestamp) => {
-      if (last === 0) {
-        last = timestamp;
-      }
-
-      const elapsed = timestamp - lastUpdate;
-
-      // Only perform expensive work at approximately 30 FPS.
-      if (elapsed >= FRAME_INTERVAL) {
-        const dt = Math.min(
-          0.05,
-          lastUpdate === 0 ? 1 / 30 : (timestamp - last) / 1000,
-        );
-
-        last = timestamp;
-        lastUpdate = timestamp;
-
-        const eng = engine.current;
-        const p = live.current;
-
-        const c = p.size / 2;
-        const R0 = p.size * 0.33;
-        const A = p.size * 0.042;
-
-        eng.t += dt;
-
-        if (p.playing) {
-          if (typeof p.level === "number") {
-            followLevel(eng, dt, p.level, p.energy);
-          } else {
-            simulateBeat(eng, dt, p.bpm, p.energy);
-          }
-        } else {
-          calmSea(eng, dt, p.energy);
-        }
-
-        // Preserve the original water physics.
-        stepPhysics(eng);
-        stepPhysics(eng);
-
-        eng.bass *= 0.9;
-
-        // Generate SVG paths only when an update is needed.
-        const paths = LAYERS.map((layer, i) =>
-          blobPath(eng.layers[i].h, R0 * (1 - i * 0.035), A, layer.amp, c),
-        );
-
-        setSnap({
-          t: eng.t,
-          bass: eng.bass,
-          paths,
-        });
-      }
-
-      // Schedule the next frame.
-      raf = requestAnimationFrame(loop);
-    };
-
-    raf = requestAnimationFrame(loop);
-
-    // Cancel the animation when inactive or unmounted.
-    return () => {
-      if (raf !== null) {
-        cancelAnimationFrame(raf);
-        raf = null;
-      }
-    };
-  }, [active]);
-
-  /* touch: push the water where the finger is */
+  /* touch: a ripple starts at the ring under the finger */
+  const lastPoke = useRef(0);
+  const counter = useRef(0);
+  // `pokeSV` is a stable shared value mutated at gesture time (not render);
+  // the compiler's immutability flag is a false positive here.
   const poke = useCallback(
-    (e, firstTouch) => {
-      if (!interactive) return;
+    // eslint-disable-next-line react-hooks/immutability
+    (e, first) => {
+      if (!interactive || !running) return;
+      const now = Date.now();
+      if (!first && now - lastPoke.current < POKE_GAP_MS) return;
+      lastPoke.current = now;
 
       const { locationX, locationY } = e.nativeEvent;
-      const x = locationX - size / 2;
-      const y = locationY - size / 2;
+      const x = locationX - g.c;
+      const y = locationY - g.c;
+      const dist = Math.hypot(x, y);
+      if (dist < g.R0 - 8) return; // ignore the empty centre
 
-      if (Math.hypot(x, y) < size * 0.18) return; // ignore the centre disc
-
-      const a = Math.atan2(x, -y);
-      const eng = engine.current;
-      const en = live.current.energy;
-
-      push(eng, a, 0.18 * en, 5);
-      if (firstTouch) {
-        push(eng, a, 0.55 * en, 7);
-        swell(eng, 0.01 * en);
-      }
+      const j = Math.min(M - 1, Math.max(0, (dist - g.R0) / g.sp));
+      counter.current += 1;
+      // eslint-disable-next-line react-hooks/immutability
+      pokeSV.value = {
+        id: counter.current,
+        j,
+        str: first ? 0.5 : 0.16,
+        w: first ? 2 : 1.5,
+      };
     },
-    [interactive, size],
+    // `pokeSV` is a stable shared value; omitting it from deps avoids a
+    // false-positive "modify after render" warning while keeping the callback
+    // referentially stable. (Missing dep is intentional — pokeSV is stable.)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [interactive, running, g],
   );
+  const onTouchStart = useCallback((e) => poke(e, true), [poke]);
+  const onTouchMove = useCallback((e) => poke(e, false), [poke]);
 
-  const c = size / 2;
+  const breathe = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + bassView.value * 0.03 }],
+  }));
 
-  const discR = size * 0.255 * (1 + snap.bass * 0.025 * energy);
-  const textScale = 1 + snap.bass * 0.04;
-
-  const wedgeGroups = useMemo(
-    () => LAYERS.map((L, i) => <Wedges key={i} size={size} shift={L.shift} />),
-    [size],
-  );
-
-  const paths = snap.paths;
-  const layerAngles = [2, 1, 0].map((i) => {
-    const L = LAYERS[i];
-    return ((L.rot + snap.t * L.rs) * 180) / Math.PI;
-  });
+  const valueSize = Math.round(size * 0.15);
+  const labelSize = Math.max(12, Math.round(size * 0.047));
+  const boxStyle = useMemo(() => ({ width: size, height: size }), [size]);
 
   return (
     <View
-      style={{ width: size, height: size }}
-      onStartShouldSetResponder={() => interactive}
-      onMoveShouldSetResponder={() => interactive}
-      onResponderGrant={(e) => poke(e, true)}
-      onResponderMove={(e) => poke(e, false)}
+      style={boxStyle}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={`${label} ${value}. Animated concentric rings.`}
     >
-      <Svg width={size} height={size} pointerEvents="none">
-        <Defs>
-          <RadialGradient id={`${uid}glow`} cx="50%" cy="50%" r="50%">
-            <Stop offset="0.6" stopColor="#ec6f8e" stopOpacity={0.22} />
-            <Stop offset="1" stopColor="#ec6f8e" stopOpacity={0} />
-          </RadialGradient>
-
-          {paths.map((d, i) => (
-            <ClipPath key={i} id={`${uid}clip${i}`}>
-              <Path d={d} />
-            </ClipPath>
+      {everActive ? (
+        <Svg width={size} height={size} pointerEvents="none">
+          {RINGS.map((i) => (
+            <Ring key={i} index={i} view={view} c={g.c} R0={g.R0} sp={g.sp} A={g.A} />
           ))}
-        </Defs>
-
-        {/* soft outer glow */}
-        <Circle cx={c} cy={c} r={size * 0.5} fill={`url(#${uid}glow)`} />
-
-        {/* back layer first, main layer on top */}
-        {[2, 1, 0].map((i) => (
-          <G key={i} clipPath={`url(#${uid}clip${i})`} opacity={LAYERS[i].op}>
-            <G
-              transform={[
-                { translateX: c },
-                { translateY: c },
-                { rotate: `${layerAngles[i]}deg` },
-                { translateX: -c },
-                { translateY: -c },
-              ]}
-            >
-              {wedgeGroups[i]}
-            </G>
-          </G>
-        ))}
-
-        {/* centre disc */}
-        <Circle
-          cx={c}
-          cy={c}
-          r={discR}
-          fill="#1a0a10"
-          stroke="rgba(255,220,200,0.12)"
-          strokeWidth={1.5}
-        />
-      </Svg>
+        </Svg>
+      ) : null}
 
       {/* centre text */}
-      <View
-        pointerEvents="none"
-        className="absolute inset-0 items-center justify-center"
-      >
-        <View
-          className="items-center"
-          style={{ transform: [{ scale: textScale }] }}
-        >
-          <Text
-            className="text-[#b98b98]"
-            style={{ fontSize: Math.max(11, size * 0.045) }}
-          >
-            {label}
-          </Text>
-          <Text
-            className="mt-1 font-semibold text-[#f2f2f5]"
-            style={{ fontSize: size * 0.13 }}
-          >
-            {value}
-          </Text>
-        </View>
+      <View pointerEvents="none" style={styles.centre}>
+        <Animated.View style={[styles.centreInner, breathe]}>
+          <View style={styles.labelRow}>
+            <View style={[styles.dot, { opacity: playing ? 1 : 0 }]} />
+            <Text style={[styles.label, { fontSize: labelSize }]}>{label}</Text>
+          </View>
+          <CountValue
+            value={value}
+            run={everActive}
+            instant={reduceMotion}
+            fontSize={valueSize}
+          />
+        </Animated.View>
       </View>
     </View>
   );
 }
+
+export default memo(WaveVisualizer);
+
+/* ------------------------------------------------------------------ */
+/* Styles                                                              */
+/* ------------------------------------------------------------------ */
+
+const styles = StyleSheet.create({
+  centre: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
+  centreInner: { alignItems: "center" },
+  labelRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: ACCENT },
+  label: { color: MUTE, fontFamily: FONT.light },
+  value: {
+    marginTop: 4,
+    color: INK,
+    fontFamily: FONT.thin,
+    includeFontPadding: false,
+  },
+  unit: { color: MUTE, fontFamily: FONT.light, letterSpacing: 0 },
+});

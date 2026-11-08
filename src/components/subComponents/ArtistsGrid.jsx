@@ -457,7 +457,7 @@ function ArtistsSection({
     [snap, step],
   );
 
-  if (!live.loading && live.artists.length === 0 && everActive.current) {
+  if (!live.loading && live.artists.length === 0 && everActive) {
     return null;
   }
 
@@ -491,7 +491,7 @@ function ArtistsSection({
       </View>
 
       {/* Body: placeholder-height spacer until first visible */}
-      {!everActive.current ? (
+      {!everActive ? (
         <View style={listStyle} />
       ) : live.loading ? (
         <Skeleton

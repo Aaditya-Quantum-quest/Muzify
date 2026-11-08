@@ -1,334 +1,496 @@
-
-import React, { useEffect, useRef, useState } from "react";
-
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
-  View,
+  AppState,
+  Pressable,
+  StyleSheet,
   Text,
-  TouchableOpacity,
-  ScrollView,
-  Platform,
+  View,
+  useColorScheme,
 } from "react-native";
+import { useIsFocused } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
+import Animated, {
+  Easing,
+  cancelAnimation,
+  useAnimatedStyle,
+  useFrameCallback,
+  useReducedMotion,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+/* ------------------------------------------------------------------ */
+/* Constants (module scope: allocated once)                            */
+/* ------------------------------------------------------------------ */
 
+const FONT = {
+  light: "Outfit_300Light",
+  semi: "Outfit_600SemiBold",
+};
 
-/* ───────────── constants ───────────── */
+const ACCENT = "#ff2d55";
+const AREA_H = 112; // height of the bar area
+const FOOT_H = 34; // axis labels below the baseline
+const SPEC_H = AREA_H + FOOT_H;
+const MIN_BAR = 14;
+const BAR_W = 14;
+const FRAME_MS = 1000 / 30; // spectrum is computed at ~30 fps to save battery
+const SETTLE_MS = 1100; // time for bars to settle after pausing
 
-const GOLD = "#d9a362";
+// Relative heights per band (Sub ... Air), scaled to the bar area.
+const BAND_MAX = [48, 42, 46, 40, 36, 44, 52, 46, 38, 42, 40, 48];
+const MAXH = BAND_MAX.map((m) => (m / 52) * AREA_H);
+const BARS = BAND_MAX.map((_, i) => i);
+const START = MAXH.map((m) => m * 0.5);
+const STATIC_FRAME = MAXH.map((m, i) => m * (0.35 + 0.4 * Math.abs(Math.sin(i * 0.9))));
 
-const MONO = Platform.select({
-  ios: "Menlo",
-  android: "monospace",
-  default: "monospace",
-});
+const BAR_GRADIENT = ["rgba(243,242,238,0.96)", "rgba(243,242,238,0.28)"];
 
-const CAPSULES = [
-  { id: 0, color: "#A07E52", w: 20, max: 48, label: "Sub" },
-  { id: 1, color: "#D99B26", w: 18, max: 42, label: "Bass 1" },
-  { id: 2, color: "#E5BF88", w: 20, max: 46, label: "Bass 2" },
-  { id: 3, color: "#C9A170", w: 18, max: 40, label: "Low Mid" },
-  { id: 4, color: "#EBD2B2", w: 16, max: 36, label: "Mid 1" },
-  { id: 5, color: "#E8A2A8", w: 18, max: 44, label: "Mid 2" },
-  { id: 6, color: "#D90038", w: 22, max: 52, label: "High Mid" },
-  { id: 7, color: "#E5A962", w: 20, max: 46, label: "Presence" },
-  { id: 8, color: "#9E7A52", w: 18, max: 38, label: "High 1" },
-  { id: 9, color: "#D99B26", w: 18, max: 42, label: "High 2" },
-  { id: 10, color: "#E5BF88", w: 18, max: 40, label: "Treble" },
-  { id: 11, color: "#7E756B", w: 22, max: 48, label: "Air" },
-];
+const PANEL = {
+  bgLight: "#0e0f13",
+  bgDark: "#111218",
+  fg: "#f3f2ee",
+  mute: "#8b909c",
+  line: "rgba(255,255,255,0.08)",
+  grid: "rgba(255,255,255,0.05)",
+};
 
+/* ------------------------------------------------------------------ */
+/* Hooks                                                               */
+/* ------------------------------------------------------------------ */
 
-const BAR_AREA_H = 80;
+// Single gate: screen focused + app foregrounded + `active` prop.
+function useIsActive(flag = true) {
+  const focused = useIsFocused();
+  const [appActive, setAppActive] = useState(AppState.currentState === "active");
 
-// Limit React updates to approximately 30 FPS.
-const FRAME_INTERVAL = 1000 / 30;
-
-/* ───────────── optimized animation hook ───────────── */
-
-function useSpectrum(isPlaying, jitter, active = true) {
-  const jitterRef = useRef(jitter);
-
-  const currentHeights = useRef(
-    CAPSULES.map((cap) => cap.max * 0.5)
-  );
-
-  const [frame, setFrame] = useState({
-    heights: CAPSULES.map((cap) => cap.max * 0.5),
-    glows: CAPSULES.map(() => 0.5),
-    pulse: 1,
-  });
-
-  // Update jitter without restarting the animation loop.
   useEffect(() => {
-    jitterRef.current = jitter;
-  }, [jitter]);
+    const sub = AppState.addEventListener("change", (s) =>
+      setAppActive(s === "active"),
+    );
+    return () => sub.remove();
+  }, []);
 
-  useEffect(() => {
-    // Don't start animation when paused or screen is inactive.
-    if (!isPlaying || !active) {
-      return undefined;
-    }
-
-    let rafId = null;
-    let time = 0;
-    let step = 0;
-    let lastFrameTime = 0;
-
-    const loop = (timestamp) => {
-      // Skip unnecessary React updates.
-      if (timestamp - lastFrameTime >= FRAME_INTERVAL) {
-        lastFrameTime = timestamp;
-
-        time += 0.08;
-        step += 1;
-
-        const heights = CAPSULES.map((cap, i) => {
-          const wave1 = Math.sin(time * 3.0 + i * 0.7) * 0.35;
-
-          const wave2 = Math.cos(time * 5.2 - i * 0.4) * 0.25;
-
-          const rhythm =
-            step % (i % 2 === 0 ? 10 : 14) === 0
-              ? 0.4
-              : 0;
-
-          const noise =
-            (Math.random() - 0.5) *
-            (jitterRef.current * 0.18);
-
-          const scale = Math.max(
-            0.18,
-            Math.min(1, 0.4 + wave1 + wave2 + rhythm + noise)
-          );
-
-          const target = cap.max * scale;
-
-          // Smooth movement.
-          currentHeights.current[i] +=
-            (target - currentHeights.current[i]) * 0.5;
-
-          return currentHeights.current[i];
-        });
-
-        const glows = heights.map((height, i) =>
-          Math.min(
-            1,
-            Math.max(0.2, height / CAPSULES[i].max)
-          )
-        );
-
-        setFrame({
-          heights,
-          glows,
-          pulse: 0.55 + 0.45 * Math.sin(time * 1.6),
-        });
-      }
-
-      rafId = requestAnimationFrame(loop);
-    };
-
-    rafId = requestAnimationFrame(loop);
-
-    // Always cancel the animation on cleanup.
-    return () => {
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
-    };
-  }, [isPlaying, active]);
-
-  return frame;
+  return flag && focused && appActive;
 }
 
-/* ───────────── DAC stream banner ───────────── */
+// While inactive, keep returning the last value seen while active. The ref is
+// only a render-cache — written after paint, never during render.
+function useWhileActive(value, active) {
+  const ref = useRef(value);
+  useEffect(() => {
+    if (active) ref.current = value;
+  }, [active, value]);
+  // eslint-disable-next-line react-hooks/refs
+  return ref.current;
+}
 
-export function AcousticDacStream({
-  sampleRate = "Direct DSD 5.6MHz",
+const haptic = () => {
+  try {
+    Haptics.selectionAsync().catch(() => {});
+  } catch {
+    // unsupported device
+  }
+};
+
+/* ------------------------------------------------------------------ */
+/* Spectrum: computed on the UI thread, zero React re-renders per frame */
+/* ------------------------------------------------------------------ */
+
+function useSpectrum({ playing, active, reduceMotion, jitter }) {
+  const cur = useSharedValue(START);
+  const pk = useSharedValue(START);
+  const timeSV = useSharedValue(0);
+  const stepSV = useSharedValue(0);
+  const accSV = useSharedValue(0);
+  const playingSV = useSharedValue(playing);
+  const jitterSV = useSharedValue(jitter);
+
+  // Jitter changes never restart anything; the worklet just reads the new value.
+  useEffect(() => {
+    jitterSV.value = jitter;
+  }, [jitter, jitterSV]);
+
+  const frame = useFrameCallback((info) => {
+    "worklet";
+    // throttle to ~30 fps
+    const dtRaw = info.timeSincePreviousFrame ?? 16.7;
+    accSV.value += dtRaw;
+    if (accSV.value < FRAME_MS * 0.9) return;
+    const dt = Math.min(64, accSV.value);
+    accSV.value = 0;
+
+    const k = dt / 33.3;
+    const isPlay = playingSV.value;
+    let time = timeSV.value;
+    let step = stepSV.value;
+    if (isPlay) {
+      time += 0.08 * k;
+      step += k;
+      timeSV.value = time;
+      stepSV.value = step;
+    }
+
+    const c = cur.value;
+    const p = pk.value;
+    const jit = jitterSV.value;
+    const f = 1 - Math.pow(0.5, k);
+    const nc = [];
+    const np = [];
+
+    for (let i = 0; i < MAXH.length; i += 1) {
+      const mx = MAXH[i];
+      let target;
+      if (isPlay) {
+        const w1 = Math.sin(time * 3 + i * 0.7) * 0.35;
+        const w2 = Math.cos(time * 5.2 - i * 0.4) * 0.25;
+        const rh = Math.floor(step) % (i % 2 === 0 ? 10 : 14) === 0 ? 0.4 : 0;
+        const nz = (Math.random() - 0.5) * (jit * 0.18);
+        target = mx * Math.max(0.18, Math.min(1, 0.4 + w1 + w2 + rh + nz));
+      } else {
+        target = mx * 0.12;
+      }
+      const v = c[i] + (target - c[i]) * f;
+      let peak = p[i];
+      if (v > peak) peak = v;
+      else peak = Math.max(v, peak - (isPlay ? 0.9 : 2.4) * k);
+      nc.push(v);
+      np.push(peak);
+    }
+
+    cur.value = nc;
+    pk.value = np;
+  }, false);
+
+  // Start/stop the frame loop. Hidden screen: stop now. Paused by the user:
+  // keep running just long enough for the bars to settle, then stop.
+  useEffect(() => {
+    // `playingSV`, `cur`, `pk`, `accSV` are stable shared values mutated on
+    // the UI thread inside an effect — not React state, so the compiler's
+    // immutability flag is a false positive.
+    // eslint-disable-next-line react-hooks/immutability
+    playingSV.value = playing;
+
+    if (reduceMotion) {
+      frame.setActive(false);
+      // eslint-disable-next-line react-hooks/immutability
+      cur.value = STATIC_FRAME;
+      // eslint-disable-next-line react-hooks/immutability
+      pk.value = STATIC_FRAME;
+      return undefined;
+    }
+    if (!active) {
+      frame.setActive(false);
+      return undefined;
+    }
+    if (playing) {
+      // eslint-disable-next-line react-hooks/immutability
+      accSV.value = 0;
+      frame.setActive(true);
+      return undefined;
+    }
+    frame.setActive(true);
+    const timer = setTimeout(() => frame.setActive(false), SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [playing, active, reduceMotion, frame, playingSV, accSV, cur, pk]);
+
+  return { cur, pk };
+}
+
+const Capsule = memo(function Capsule({ index, cur }) {
+  const style = useAnimatedStyle(() => ({
+    height: Math.max(MIN_BAR, cur.value[index]),
+  }));
+  return (
+    <Animated.View style={[styles.cap, style]}>
+      <LinearGradient colors={BAR_GRADIENT} style={StyleSheet.absoluteFill} />
+    </Animated.View>
+  );
+});
+
+const PeakDot = memo(function PeakDot({ index, pk }) {
+  const style = useAnimatedStyle(() => ({
+    transform: [{ translateY: -(pk.value[index] + 8) }],
+  }));
+  return <Animated.View style={[styles.peak, style]} />;
+});
+
+const Spectrum = memo(function Spectrum({ cur, pk }) {
+  return (
+    <View style={styles.specBody} pointerEvents="none">
+      <View style={[styles.gridLine, { top: AREA_H * 0.25 }]} />
+      <View style={[styles.gridLine, { top: AREA_H * 0.5 }]} />
+      <View style={[styles.gridLine, { top: AREA_H * 0.75 }]} />
+
+      <View style={styles.bars}>
+        {BARS.map((i) => (
+          <View key={i} style={styles.col}>
+            <Capsule index={i} cur={cur} />
+            <PeakDot index={i} pk={pk} />
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.baseline} />
+      <View style={styles.axis}>
+        <Text style={styles.axisText}>Sub</Text>
+        <Text style={styles.axisText}>Mid</Text>
+        <Text style={styles.axisText}>Air</Text>
+      </View>
+    </View>
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* Live dot: the ping ring exists (and loops) only while streaming     */
+/* ------------------------------------------------------------------ */
+
+const PingRing = memo(function PingRing() {
+  const p = useSharedValue(0);
+  useEffect(() => {
+    p.value = 0;
+    p.value = withRepeat(
+      withTiming(1, { duration: 2200, easing: Easing.out(Easing.quad) }),
+      -1,
+      false,
+    );
+    return () => cancelAnimation(p);
+  }, [p]);
+  const style = useAnimatedStyle(() => ({
+    opacity: 0.6 * (1 - p.value),
+    transform: [{ scale: 1 + 2.2 * p.value }],
+  }));
+  return <Animated.View pointerEvents="none" style={[styles.ping, style]} />;
+});
+
+/* ------------------------------------------------------------------ */
+/* DAC stream banner                                                   */
+/* ------------------------------------------------------------------ */
+
+export const AcousticDacStream = memo(function AcousticDacStream({
+  sampleRate = "DSD 5.6 MHz",
   headroom = 4.2,
   jitter = 0.8,
-  isPlaying = true,
+  isPlaying, // optional: controlled. Leave undefined for uncontrolled (starts playing)
   active = true,
   onToggle,
 }) {
-  const { heights, glows, pulse } = useSpectrum(
-    isPlaying,
-    jitter,
-    active
-  );
+  const isActive = useIsActive(active);
+  const reduceMotion = useReducedMotion();
+  const dark = useColorScheme() === "dark";
 
-  const isAnimating = isPlaying && active;
+  // Lazy mount: the spectrum is not built until the banner has been visible once.
+  // State, not a ref — the Spectrum mount branch reads it during render, so it
+  // must trigger a re-render the moment the banner becomes visible.
+  const [everActive, setEverActive] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (isActive) setEverActive(true);
+  }, [isActive]);
 
-  return (
-    <View className="w-full overflow-hidden rounded-2xl border border-neutral-800 bg-[#0d0d0f] p-5">
+  // Readout values frozen while off-screen.
+  const live = useWhileActive({ sampleRate, headroom, jitter }, isActive);
 
-      {/* Top row */}
+  const [internal, setInternal] = useState(true);
+  const playing = isPlaying ?? internal;
+  // Live refs: read only inside the toggle callback, never during render.
+  const playingRef = useRef(playing);
+  const onToggleRef = useRef(onToggle);
+  useEffect(() => {
+    playingRef.current = playing;
+    onToggleRef.current = onToggle;
+  }, [playing, onToggle]);
 
-      <View className="mb-5 flex-row items-center justify-between">
+  const { cur, pk } = useSpectrum({
+    playing,
+    active: isActive,
+    reduceMotion,
+    jitter: live.jitter,
+  });
 
-        <View
-          className="flex-1 flex-row items-center"
-          style={{ gap: 10 }}
-        >
-          <View
-            style={{
-              height: 10,
-              width: 10,
-              borderRadius: 5,
-              backgroundColor: GOLD,
-              opacity: isAnimating ? pulse : 0.4,
-              shadowColor: GOLD,
-              shadowOpacity: isAnimating ? 0.9 : 0,
-              shadowRadius: 6,
-              shadowOffset: { width: 0, height: 0 },
-              elevation: isAnimating ? 4 : 0,
-            }}
-          />
+  const toggle = useCallback(() => {
+    const next = !playingRef.current;
+    haptic();
+    setInternal(next);
+    onToggleRef.current?.(next);
+  }, []);
 
-          <Text
-            className="font-bold uppercase"
-            numberOfLines={1}
-            style={{
-              color: GOLD,
-              fontFamily: MONO,
-              fontSize: 13,
-              letterSpacing: 2.4,
-            }}
-          >
-            Acoustic DAC Stream
-          </Text>
-        </View>
-
-        <Text
-          className="text-xs font-medium text-neutral-400"
-          style={{
-            fontFamily: MONO,
-            letterSpacing: 1,
-          }}
-        >
-          {sampleRate}
-        </Text>
-
-      </View>
-
-      {/* Animated capsules */}
-
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={onToggle}
-        disabled={!onToggle}
-        className="flex-row items-center justify-between px-1"
-        style={{ height: BAR_AREA_H }}
-      >
-        {CAPSULES.map((cap, i) => (
-          <View
-            key={cap.id}
-            className="flex-1 items-center justify-center"
-            style={{ height: BAR_AREA_H }}
-          >
-            <View
-              style={{
-                height: heights[i],
-                width: cap.w,
-                borderRadius: cap.w / 2,
-                backgroundColor: cap.color,
-                shadowColor: cap.color,
-                shadowOpacity: 0.65,
-                shadowRadius: 10 * glows[i],
-                shadowOffset: { width: 0, height: 0 },
-                elevation: 3,
-              }}
-            />
-          </View>
-        ))}
-      </TouchableOpacity>
-
-      {/* Bottom readout */}
-
-      <View className="mt-5 flex-row items-center justify-between border-t border-neutral-900 pt-4">
-
-        <Text
-          className="text-xs text-neutral-400"
-          style={{ fontFamily: MONO }}
-        >
-          Headroom:{" "}
-          <Text className="font-semibold text-neutral-200">
-            +{headroom.toFixed(1)} dB
-          </Text>
-        </Text>
-
-        <Text
-          className="text-xs text-neutral-400"
-          style={{ fontFamily: MONO }}
-        >
-          Jitter:{" "}
-          <Text className="font-semibold text-neutral-200">
-            {"< "}
-            {jitter.toFixed(1)} ps RMS
-          </Text>
-        </Text>
-
-      </View>
-
-    </View>
-  );
-}
-
-/* ───────────── main screen ───────────── */
-
-export default function DACStreamVisualizer({
-  active = true,
-}) {
-  const insets = useSafeAreaInsets();
-
-  const [isPlaying, setIsPlaying] = useState(true);
-
-  const [sampleRate, setSampleRate] = useState(
-    "Direct DSD 5.6MHz"
-  );
-
-  const [headroom, setHeadroom] = useState(4.2);
-
-  const [jitter, setJitter] = useState(0.8);
-
-
-
+  const streaming = playing && !reduceMotion;
+  const stateText = reduceMotion ? "Streaming" : playing ? "Streaming" : "Paused";
 
   return (
     <View
-      className="flex-1 bg-[#070708]"
-      style={{ paddingTop: insets.top }}
+      style={[
+        styles.panel,
+        { backgroundColor: dark ? PANEL.bgDark : PANEL.bgLight },
+      ]}
     >
+      {/* Header */}
+      <View style={styles.top}>
+        <View style={styles.ttl}>
+          <View style={[styles.liveWrap, { opacity: playing ? 1 : 0.35 }]}>
+            {streaming && isActive ? <PingRing /> : null}
+            <View style={styles.live} />
+          </View>
+          <Text numberOfLines={1} style={styles.title}>
+            Acoustic DAC stream
+          </Text>
+        </View>
+        <View style={styles.rate}>
+          <Text style={styles.rateText}>{live.sampleRate}</Text>
+        </View>
+      </View>
+      <Text style={styles.state} accessibilityLiveRegion="polite">
+        {stateText}
+      </Text>
 
-
-      {/* Content */}
-
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
-          padding: 20,
-          paddingBottom: insets.bottom + 40,
-          gap: 16,
-        }}
+      {/* Spectrum */}
+      <Pressable
+        onPress={toggle}
+        disabled={reduceMotion}
+        accessibilityRole="button"
+        accessibilityLabel="Spectrum"
+        accessibilityHint={playing ? "Double tap to pause the stream" : "Double tap to resume the stream"}
+        accessibilityState={{ selected: playing }}
+        style={styles.spec}
       >
+        {everActive ? <Spectrum cur={cur} pk={pk} /> : null}
+      </Pressable>
 
-        <AcousticDacStream
-          sampleRate={sampleRate}
-          headroom={headroom}
-          jitter={jitter}
-          isPlaying={isPlaying}
-          active={active}
-          onToggle={() =>
-            setIsPlaying((previous) => !previous)
-          }
-        />
-
-        {/* Presets */}
-
-     
-
-      </ScrollView>
-
+      {/* Readouts */}
+      <View style={styles.read}>
+        <View style={styles.cell}>
+          <Text style={styles.cellValue}>+{live.headroom.toFixed(1)} dB</Text>
+          <Text style={styles.cellLabel}>Headroom</Text>
+        </View>
+        <View style={[styles.cell, styles.cellDivider]}>
+          <Text style={styles.cellValue}>{"< "}{live.jitter.toFixed(1)} ps</Text>
+          <Text style={styles.cellLabel}>Jitter, RMS</Text>
+        </View>
+      </View>
     </View>
   );
+});
+
+/* ------------------------------------------------------------------ */
+/* Section wrapper: <DACStreamVisualizer active={isVisible} />          */
+/* Renders just the banner (no ScrollView / safe-area wrapper), so it  */
+/* can sit inside any screen.                                          */
+/* ------------------------------------------------------------------ */
+
+function DACStreamVisualizer({ active = true, ...props }) {
+  return <AcousticDacStream active={active} {...props} />;
 }
+
+export default memo(DACStreamVisualizer);
+
+/* ------------------------------------------------------------------ */
+/* Styles                                                              */
+/* ------------------------------------------------------------------ */
+
+const styles = StyleSheet.create({
+  panel: {
+    width: "100%",
+    borderRadius: 32,
+    paddingTop: 22,
+    paddingHorizontal: 22,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: PANEL.line,
+    shadowColor: "#000",
+    shadowOpacity: 0.45,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 8,
+  },
+
+  top: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  ttl: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10, minWidth: 0 },
+  liveWrap: { width: 9, height: 9, alignItems: "center", justifyContent: "center" },
+  live: { width: 9, height: 9, borderRadius: 5, backgroundColor: ACCENT },
+  ping: {
+    position: "absolute",
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: ACCENT,
+  },
+  title: {
+    flexShrink: 1,
+    color: PANEL.fg,
+    fontFamily: FONT.semi,
+    fontSize: 17,
+    letterSpacing: -0.35,
+  },
+  rate: {
+    height: 28,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: PANEL.line,
+    justifyContent: "center",
+  },
+  rateText: { color: PANEL.mute, fontFamily: FONT.light, fontSize: 13 },
+  state: {
+    marginTop: 6,
+    marginLeft: 19,
+    color: PANEL.mute,
+    fontFamily: FONT.light,
+    fontSize: 13,
+  },
+
+  spec: { height: SPEC_H, marginTop: 18 },
+  specBody: { ...StyleSheet.absoluteFillObject },
+  gridLine: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: PANEL.grid },
+  bars: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    height: AREA_H,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    paddingHorizontal: 4,
+  },
+  col: { flex: 1, height: AREA_H, alignItems: "center", justifyContent: "flex-end" },
+  cap: { width: BAR_W, borderRadius: BAR_W / 2, overflow: "hidden" },
+  peak: {
+    position: "absolute",
+    bottom: 0,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: ACCENT,
+  },
+  baseline: { position: "absolute", left: 0, right: 0, top: AREA_H, height: 1, backgroundColor: PANEL.line },
+  axis: {
+    position: "absolute",
+    left: 4,
+    right: 4,
+    top: AREA_H + 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  axisText: { color: PANEL.mute, fontFamily: FONT.light, fontSize: 12 },
+
+  read: {
+    flexDirection: "row",
+    marginTop: 14,
+    marginHorizontal: -22,
+    borderTopWidth: 1,
+    borderTopColor: PANEL.line,
+  },
+  cell: { flex: 1, paddingTop: 16, paddingBottom: 18, paddingHorizontal: 22 },
+  cellDivider: { borderLeftWidth: 1, borderLeftColor: PANEL.line },
+  cellValue: { color: PANEL.fg, fontFamily: FONT.light, fontSize: 26, letterSpacing: -0.8 },
+  cellLabel: { marginTop: 5, color: PANEL.mute, fontFamily: FONT.light, fontSize: 13 },
+});
