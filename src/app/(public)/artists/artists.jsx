@@ -20,8 +20,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { useIsFocused } from '@react-navigation/native';
+import { useRouter, useIsFocused } from 'expo-router';
 import Svg, {
   Path,
   Circle,
@@ -183,7 +182,8 @@ const BottomFade = memo(function BottomFade() {
       <Rect width="100%" height="100%" fill="url(#artistsFade)" />
     </Svg>
   </View>
-);
+  );
+});
 
 const Header = memo(function Header({ summary, topInset, onBack }) {
   return (
@@ -202,7 +202,8 @@ const Header = memo(function Header({ summary, topInset, onBack }) {
       <IconBack />
     </Pressable>
   </View>
-);
+  );
+});
 
 const SearchBar = memo(function SearchBar({ value, onChange, onClear }) {
   return (
@@ -225,7 +226,8 @@ const SearchBar = memo(function SearchBar({ value, onChange, onClear }) {
       </Pressable>
     )}
   </View>
-);
+  );
+});
 
 const SortTabs = memo(function SortTabs({ active, onPick }) {
   return (
@@ -245,7 +247,8 @@ const SortTabs = memo(function SortTabs({ active, onPick }) {
       );
     })}
   </View>
-);
+  );
+});
 
 const IndexRail = memo(function IndexRail({ letters, onJump }) {
   return (
@@ -263,14 +266,17 @@ const IndexRail = memo(function IndexRail({ letters, onJump }) {
       </Pressable>
     ))}
   </View>
-);
+  );
+});
 
 /* ───────────── List items ───────────── */
 const SectionLabel = memo(function SectionLabel({ letter }) {
-  <View style={styles.sectionWrap}>
-    <Text style={styles.sectionText}>{letter}</Text>
-  </View>
-));
+  return (
+    <View style={styles.sectionWrap}>
+      <Text style={styles.sectionText}>{letter}</Text>
+    </View>
+  );
+});
 
 const ArtistRow = memo(({ artist, isPlaying, onOpen, onPlay }) => {
   const initials = useMemo(() => getArtistInitials(artist.name), [artist.name]);
