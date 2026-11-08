@@ -241,7 +241,10 @@ const SlideToStart = memo(function SlideToStart({ onComplete, active }) {
     }).start();
   }, [dragX]);
 
-  const panResponder = useMemo(
+  // Built once and reads doneRef at gesture time, never during render — so the
+  // handlers stay referentially stable across renders (see EquilizerScreen).
+  const [panResponder] = useState(
+    // eslint-disable-next-line react-hooks/refs
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => !doneRef.current,
@@ -255,7 +258,6 @@ const SlideToStart = memo(function SlideToStart({ onComplete, active }) {
         },
         onPanResponderTerminate: springBack,
       }),
-    [dragX, complete, springBack]
   );
 
   const fillX = useMemo(
