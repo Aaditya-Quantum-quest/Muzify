@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   Platform,
   useWindowDimensions,
+  Image as RNImage,
+  Alert,
 } from "react-native";
 
 import { scanSelectedFolder } from "../../services/folderScanner";
@@ -33,7 +35,15 @@ import {
   Play,
   Minus,
   Plus,
+  X,
 } from "lucide-react-native";
+import * as ImagePicker from "expo-image-picker";
+import {
+  addWelcomeBackgrounds,
+  clearWelcomeBackgrounds,
+  listWelcomeBackgrounds,
+  removeWelcomeBackground,
+} from "../../services/welcomeBackgrounds";
 import { usePlayer } from "../../context/player-context";
 import MusicHeader from "../../components/subComponents/MusicHeader";
 import { HEADER_CONTENT } from "../../constants/headerContent";
@@ -703,6 +713,131 @@ function SegChips({ opts, value, onChange }) {
   );
 }
 
+function WelcomeBackgroundsSection() {
+  const [images, setImages] = useState([]);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    const next = await listWelcomeBackgrounds();
+    setImages(next);
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const pick = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Permission required", "Allow photo access to add welcome backgrounds.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsMultipleSelection: true,
+        quality: 0.85,
+        orderedSelection: true,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      const next = await addWelcomeBackgrounds(result.assets);
+      setImages(next);
+    } catch (error) {
+      console.warn("Welcome background pick failed", error);
+      Alert.alert("Could not add images", "Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeOne = async (id) => {
+    const next = await removeWelcomeBackground(id);
+    setImages(next);
+  };
+
+  const clearAll = () => {
+    if (!images.length) return;
+    Alert.alert("Clear all backgrounds?", "This removes every uploaded welcome image.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Clear all",
+        style: "destructive",
+        onPress: async () => {
+          const next = await clearWelcomeBackgrounds();
+          setImages(next);
+        },
+      },
+    ]);
+  };
+
+  return (
+    <View className="mb-3 rounded-3xl p-4" style={{ backgroundColor: C.chip }}>
+      <View className="flex-row items-baseline justify-between">
+        <Text className="text-base font-bold" style={{ color: C.fg }}>
+          Welcome Screen Backgrounds
+        </Text>
+        <Text className="text-sm font-semibold" style={{ color: C.amb }}>
+          {images.length}
+        </Text>
+      </View>
+      <Text className="mt-1 text-xs" style={{ color: C.mut }}>
+        {images.length
+          ? `${images.length} image${images.length === 1 ? "" : "s"} rotate on each launch`
+          : "Uses the default welcome image until you add your own"}
+      </Text>
+
+      {images.length ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          className="mt-3 grow-0"
+          contentContainerStyle={{ gap: 8 }}
+        >
+          {images.map((item) => (
+            <View key={item.id} className="overflow-hidden rounded-2xl" style={{ backgroundColor: C.pill }}>
+              <RNImage source={{ uri: item.uri }} style={{ width: 72, height: 72 }} resizeMode="cover" />
+              <TouchableOpacity
+                onPress={() => removeOne(item.id)}
+                activeOpacity={0.75}
+                accessibilityLabel="Remove background"
+                className="absolute right-1 top-1 h-6 w-6 items-center justify-center rounded-full"
+                style={{ backgroundColor: "#2a1500" }}
+              >
+                <X size={14} color="#fff" strokeWidth={2.2} />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </ScrollView>
+      ) : null}
+
+      <View className="mt-3 flex-row flex-wrap gap-2">
+        <TouchableOpacity
+          onPress={pick}
+          disabled={busy}
+          activeOpacity={0.75}
+          className="h-10 items-center justify-center rounded-full bg-amber-400 px-5"
+        >
+          <Text className="text-sm font-medium" style={{ color: C.tabActive }}>
+            Add Background Images
+          </Text>
+        </TouchableOpacity>
+        {images.length ? (
+          <TouchableOpacity
+            onPress={clearAll}
+            activeOpacity={0.75}
+            className="h-10 items-center justify-center rounded-full px-5"
+            style={{ backgroundColor: C.pill }}
+          >
+            <Text className="text-sm font-medium text-[#c4c4cc]">Clear all</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 function RangeControl({ value, min, max, unit, onChange }) {
   const step = unit === "%" ? 5 : 1;
   const pct = max > min ? ((value - min) / (max - min)) * 100 : 0;
@@ -959,6 +1094,8 @@ export default function SettingsScreen() {
                 subtitle="Experience the Musika intro screen again"
                 onPress={() => setOnboardingStep("welcome")}
               />
+
+              <WelcomeBackgroundsSection />
             </>
           )}
 

@@ -38,6 +38,14 @@
         }
       ],
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Muzify uses your photos for welcome screen backgrounds.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-media-library",
         {
           "granularPermissions": ["audio"],
