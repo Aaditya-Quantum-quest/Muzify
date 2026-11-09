@@ -519,6 +519,7 @@ export default function LibraryScreen() {
   const { playSongs, togglePlay, track, playing, seekTo } = usePlayer();
   const cur = track?.id;
   const mixPosition = useSharedValue(0);
+  const [expandedId, setExpandedId] = useState(null);
 
   useEffect(() => {
     if (!isFocused) return;
@@ -660,12 +661,14 @@ export default function LibraryScreen() {
     if (filter !== "All") return;
     const songIndex = dbSongs.findIndex((song) => song.id === id);
     if (songIndex < 0) return;
-    if (track?.id === id) {
-      togglePlay();
+    if (expandedId === id) {
+      setExpandedId(null);
+      if (playing) togglePlay();
       return;
     }
+    setExpandedId(id);
     playSongs(dbSongs, songIndex);
-  }, [filter, dbSongs, track?.id, togglePlay, playSongs]);
+  }, [filter, dbSongs, expandedId, playing, togglePlay, playSongs]);
 
   const goArtists = () => router.push("/settings");
 
@@ -716,7 +719,7 @@ export default function LibraryScreen() {
       <FlatList
         key={gridView ? "grid" : "list"}
         data={filtered}
-        extraData={`${cur}-${playing}`}
+        extraData={`${expandedId}-${cur}-${playing}`}
         numColumns={gridView ? 2 : 1}
         keyExtractor={(x) => String(x.id)}
         ListHeaderComponent={header}
@@ -766,7 +769,7 @@ export default function LibraryScreen() {
                 })}
                 index={index}
                 firstMount={false}
-                expanded={isCur && playing}
+                expanded={expandedId === item.id}
                 position={mixPosition}
                 onSelect={() => play(item.id)}
                 onSeek={(seconds) => seekTo(seconds)}
