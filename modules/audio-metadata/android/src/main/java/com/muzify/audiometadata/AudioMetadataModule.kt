@@ -70,7 +70,7 @@ class AudioMetadataModule(reactContext: ReactApplicationContext) :
       putIfBlank(result, "album",
         retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ALBUM))
       putIfBlank(result, "album_artist",
-        retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ALBUM_ARTIST))
+        retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST))
       putIfBlank(result, "composer",
         retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_COMPOSER))
       putIfBlank(result, "genre",
@@ -78,9 +78,10 @@ class AudioMetadataModule(reactContext: ReactApplicationContext) :
       putIfBlank(result, "year",
         retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_YEAR))
 
-      retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_TRACK_NUMBER)
-        ?.takeIf { it.isNotBlank() }?.let {
-          result.putDouble("track_number", it.toDoubleOrNull() ?: 0.0)
+      retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)
+        ?.takeIf { it.isNotBlank() }?.let { raw ->
+          val track = raw.split('/', limit = 2)[0].trim().toDoubleOrNull() ?: 0.0
+          result.putDouble("track_number", track)
         }
 
       retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
@@ -149,30 +150,44 @@ class AudioMetadataModule(reactContext: ReactApplicationContext) :
     try {
       retriever.setDataSource(reactApplicationContext, Uri.parse(contentUri))
 
-      retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_BIT_RATE)
+      retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_BITRATE)
         ?.takeIf { it.isNotBlank() }
         ?.let {
           val bps = it.toDoubleOrNull() ?: 0.0
           if (bps > 0) result.putDouble("bitrate", bps / 1000.0)
         }
 
-      retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_FILETYPE)
+      retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
         ?.let { if (it.isNotBlank()) result.putString("mimeType", it) }
 
       val extractor = android.media.MediaExtractor()
+      var pfd: android.os.ParcelFileDescriptor? = null
       try {
-        extractor.setDataSource(reactApplicationContext, Uri.parse(contentUri))
+        val uri = Uri.parse(contentUri)
+        pfd = reactApplicationContext.contentResolver.openFileDescriptor(uri, "r")
+        if (pfd != null) {
+          extractor.setDataSource(pfd.fileDescriptor)
+        } else {
+          val headers: MutableMap<String, String> = mutableMapOf()
+          extractor.setDataSource(reactApplicationContext, uri, headers)
+        }
         for (i in 0 until extractor.trackCount) {
-          val format = extractor.getTrackFormat(i) ?: continue
+          val format = extractor.getTrackFormat(i)
           if (format.containsKey(android.media.MediaFormat.KEY_MIME)) {
             val mime = format.getString(android.media.MediaFormat.KEY_MIME) ?: continue
             if (!mime.startsWith("audio/")) continue
             result.putString("mimeType", mime)
-            format.getInteger(android.media.MediaFormat.KEY_SAMPLE_RATE)?.let {
-              if (it > 0) result.putDouble("sampleRate", it.toDouble())
+            if (format.containsKey(android.media.MediaFormat.KEY_SAMPLE_RATE)) {
+              val sampleRate = format.getInteger(android.media.MediaFormat.KEY_SAMPLE_RATE)
+              if (sampleRate > 0) result.putDouble("sampleRate", sampleRate.toDouble())
             }
-            format.getInteger(android.media.MediaFormat.KEY_CHANNEL_COUNT)?.let {
-              if (it > 0) result.putDouble("channels", it.toDouble())
+            if (format.containsKey(android.media.MediaFormat.KEY_CHANNEL_COUNT)) {
+              val channels = format.getInteger(android.media.MediaFormat.KEY_CHANNEL_COUNT)
+              if (channels > 0) result.putDouble("channels", channels.toDouble())
+            }
+            if (format.containsKey(android.media.MediaFormat.KEY_BIT_RATE)) {
+              val bps = format.getInteger(android.media.MediaFormat.KEY_BIT_RATE)
+              if (bps > 0) result.putDouble("bitrate", bps / 1000.0)
             }
             break
           }
@@ -180,7 +195,23 @@ class AudioMetadataModule(reactContext: ReactApplicationContext) :
       } catch (e: Exception) {
         Log.w(TAG, "MediaExtractor failed for $contentUri", e)
       } finally {
+        try { pfd?.close() } catch (e: Exception) { Log.w(TAG, "pfd close error", e) }
         try { extractor.release() } catch (e: Exception) { Log.w(TAG, "extractor release error", e) }
+      }
+
+      if (!result.hasKey("mimeType")) {
+        val uri = Uri.parse(contentUri)
+        val fromResolver = reactApplicationContext.contentResolver.getType(uri)
+        val extension = android.webkit.MimeTypeMap.getFileExtensionFromUrl(contentUri)
+          ?.lowercase()
+          ?: uri.lastPathSegment?.substringAfterLast('.', "")?.lowercase().orEmpty()
+        val fromExtension = if (extension.isNotEmpty()) {
+          android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+        } else {
+          null
+        }
+        val type = fromResolver ?: fromExtension
+        if (!type.isNullOrBlank()) result.putString("mimeType", type)
       }
 
       promise.resolve(result)
