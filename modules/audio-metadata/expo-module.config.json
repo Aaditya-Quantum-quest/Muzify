@@ -1,0 +1,7 @@
+{
+  "name": "muzify-audio-metadata",
+  "platforms": ["android"],
+  "android": {
+    "package": "com.muzify.audiometadata"
+  }
+}

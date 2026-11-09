@@ -327,18 +327,18 @@ const ArtistRow = memo(({ artist, isPlaying, onOpen, onPlay }) => {
 });
 ArtistRow.displayName = 'ArtistRow';
 
-/* ───────────── Screen body (mounted only while the screen is focused) ───────────── */
-const ArtistsContent = memo(({ store }) => {
+/* ───────────── Screen ───────────── */
+export default function ArtistsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const isFocused = useIsFocused();
   const { playSongs, togglePlay } = usePlayer();
 
-  const [inputQuery, setInputQuery] = useState(store.current.query);
-  const [sort, setSort] = useState(store.current.sort);
+  const [inputQuery, setInputQuery] = useState('');
+  const [sort, setSort] = useState('az');
   const [playingId, setPlayingId] = useState(null);
 
   const listRef = useRef(null);
-  const restored = useRef(false);
 
   const query = useDebounced(inputQuery, 250);
   const hasQuery = query.trim().length > 0;
@@ -350,8 +350,10 @@ const ArtistsContent = memo(({ store }) => {
 
   // Fresh library data every time the screen becomes visible
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (isFocused) {
+      refresh();
+    }
+  }, [isFocused, refresh]);
 
   /* Flat, fixed-height rows → O(1) layout math, no per-item measuring */
   const grouped = sort === 'az' && !hasQuery;
@@ -392,22 +394,14 @@ const ArtistsContent = memo(({ store }) => {
   const handleBack = useCallback(() => router.back(), [router]);
   const handleOpen = useCallback((id) => router.push(`/artists/${id}`), [router]);
 
-  const handleSort = useCallback(
-    (value) => {
-      store.current.sort = value;
-      setSort(value);
-      listRef.current?.scrollToOffset({ offset: 0, animated: false });
-    },
-    [store]
-  );
+  const handleSort = useCallback((value) => {
+    setSort(value);
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, []);
 
-  const handleQuery = useCallback(
-    (text) => {
-      store.current.query = text;
-      setInputQuery(text);
-    },
-    [store]
-  );
+  const handleQuery = useCallback((text) => {
+    setInputQuery(text);
+  }, []);
   const handleClear = useCallback(() => handleQuery(''), [handleQuery]);
 
   const handlePlay = useCallback(
@@ -463,22 +457,6 @@ const ArtistsContent = memo(({ store }) => {
 
   const keyExtractor = useCallback((item) => item.key, []);
 
-  const onScroll = useCallback(
-    (e) => {
-      store.current.y = e.nativeEvent.contentOffset.y; // ref write, zero re-renders
-    },
-    [store]
-  );
-
-  // Put the user back where they left off after returning to the screen
-  const onListLayout = useCallback(() => {
-    if (restored.current) return;
-    restored.current = true;
-    if (store.current.y > 0) {
-      listRef.current?.scrollToOffset({ offset: store.current.y, animated: false });
-    }
-  }, [store]);
-
   const contentStyle = useMemo(
     () => ({
       paddingLeft: SIDE,
@@ -523,9 +501,6 @@ const ArtistsContent = memo(({ store }) => {
             renderItem={renderItem}
             keyExtractor={keyExtractor}
             getItemLayout={getItemLayout}
-            onLayout={onListLayout}
-            onScroll={onScroll}
-            scrollEventThrottle={32}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={contentStyle}
             ListEmptyComponent={<Text style={styles.empty}>{emptyText}</Text>}
@@ -547,22 +522,6 @@ const ArtistsContent = memo(({ store }) => {
       </View>
     </View>
   );
-});
-ArtistsContent.displayName = 'ArtistsContent';
-
-/* ───────────── Route entry: renders the heavy tree only while visible ───────────── */
-export default function ArtistsScreen() {
-  const isFocused = useIsFocused();
-
-  // Survives blur/refocus because it lives here, not in the unmounted body
-  const store = useRef({ query: '', sort: 'az', y: 0 });
-
-  if (!isFocused) {
-    // Cheap placeholder: keeps the background so tab/stack transitions never flash
-    return <View style={styles.screen} />;
-  }
-
-  return <ArtistsContent store={store} />;
 }
 
 /* ───────────── Styles ───────────── */

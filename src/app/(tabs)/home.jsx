@@ -23,10 +23,8 @@ import Playlists, {
   DEFAULT_PLAYLISTS,
 } from "../../components/subComponents/Playlists";
 
-import WaveVisualizer from "../../components/ui/CircleWaveVisualizer";
 import DACStreamVisualizer from "../../components/subComponents/DACStreamVisualizer";
 
-import NowPlayingWidget from "../../widgets/Widgets";
 import ArtistsSection from "../../components/subComponents/ArtistsGrid";
 import RecentGrid from "../../components/subComponents/RecentSection";
 
@@ -36,7 +34,6 @@ import { useHideTabBarOnScroll } from "../../components/ui/BottomBar";
 
 // NEW: VisibleOnly wrapper
 import VisibleOnly from "../../components/common/VisibleOnly.jsx";
-import Spectrumcard from "../../components/subComponents/Spectrumcard .jsx";
 import { useArtists } from "../../hooks/artists/useArtists.js";
 
 // LinearGradient NativeWind support
@@ -194,7 +191,7 @@ export default function HomeScreen() {
         {/* <NowPlayingWidget /> */}
 
         <RecentGrid isScreenActive={isVisible} />
-        <Spectrumcard />
+     
 
         {/* ALL COMPONENTS FINISHED */}
       </ScrollView>

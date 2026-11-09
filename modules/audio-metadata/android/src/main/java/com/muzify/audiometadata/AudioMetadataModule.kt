@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Base64
 import android.util.Log
 import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
@@ -21,8 +22,8 @@ import org.jaudiotagger.audio.AudioFile
 import org.jaudiotagger.audio.AudioFileIO
 import org.jaudiotagger.tag.FieldKey
 import org.jaudiotagger.tag.Tag
-import org.jaudiotagger.tag.TagTextField
 import org.jaudiotagger.tag.images.Artwork
+import org.jaudiotagger.tag.images.ArtworkFactory
 
 /**
  * Native Android metadata extractor + writer.
@@ -58,7 +59,7 @@ class AudioMetadataModule(reactContext: ReactApplicationContext) :
   fun getMetadata(contentUri: String, promise: Promise) {
     val retriever = android.media.MediaMetadataRetriever()
     try {
-      retriever.setDataSource(reactApplication.applicationContext, Uri.parse(contentUri))
+      retriever.setDataSource(reactApplicationContext, Uri.parse(contentUri))
 
       val result = Arguments.createMap()
 
@@ -104,7 +105,7 @@ class AudioMetadataModule(reactContext: ReactApplicationContext) :
   fun getArtwork(contentUri: String, promise: Promise) {
     val retriever = android.media.MediaMetadataRetriever()
     try {
-      retriever.setDataSource(reactApplication.applicationContext, Uri.parse(contentUri))
+      retriever.setDataSource(reactApplicationContext, Uri.parse(contentUri))
 
       val embedded = retriever.embeddedPicture
       if (embedded == null || embedded.isEmpty()) {
@@ -146,7 +147,7 @@ class AudioMetadataModule(reactContext: ReactApplicationContext) :
 
     val retriever = android.media.MediaMetadataRetriever()
     try {
-      retriever.setDataSource(reactApplication.applicationContext, Uri.parse(contentUri))
+      retriever.setDataSource(reactApplicationContext, Uri.parse(contentUri))
 
       retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_BIT_RATE)
         ?.takeIf { it.isNotBlank() }
@@ -160,7 +161,7 @@ class AudioMetadataModule(reactContext: ReactApplicationContext) :
 
       val extractor = android.media.MediaExtractor()
       try {
-        extractor.setDataSource(reactApplication.applicationContext, Uri.parse(contentUri))
+        extractor.setDataSource(reactApplicationContext, Uri.parse(contentUri))
         for (i in 0 until extractor.trackCount) {
           val format = extractor.getTrackFormat(i) ?: continue
           if (format.containsKey(android.media.MediaFormat.KEY_MIME)) {
@@ -211,7 +212,7 @@ class AudioMetadataModule(reactContext: ReactApplicationContext) :
   @ReactMethod
   fun writeMetadata(contentUri: String, fields: ReadableMap, promise: Promise) {
     val uri = Uri.parse(contentUri)
-    val resolver: ContentResolver = reactApplication.contentResolver
+    val resolver: ContentResolver = reactApplicationContext.contentResolver
 
     // Only content:// URIs are supported (SAF URIs from the folder picker).
     if (uri.scheme != "content") {
@@ -247,14 +248,14 @@ class AudioMetadataModule(reactContext: ReactApplicationContext) :
           "composer" -> { if (setField(tag, FieldKey.COMPOSER, value)) changed = true }
           "genre" -> { if (setField(tag, FieldKey.GENRE, value)) changed = true }
           "year" -> {
-            if (value.isNotBlank() && value.toIntOrNull() != null) {
-              tag.setField(TagTextField.createField(FieldKey.YEAR, value.toInt()))
+            if (value != null && value.isNotBlank() && value.toIntOrNull() != null) {
+              tag.setField(FieldKey.YEAR, value)
               changed = true
             }
           }
           "track_number" -> {
-            if (value.isNotBlank() && value.toIntOrNull() != null) {
-              tag.setField(TagTextField.createField(FieldKey.TRACK, value.toInt()))
+            if (value != null && value.isNotBlank() && value.toIntOrNull() != null) {
+              tag.setField(FieldKey.TRACK, value)
               changed = true
             }
           }
@@ -267,10 +268,10 @@ class AudioMetadataModule(reactContext: ReactApplicationContext) :
                 val mime = value.substring(5, comma)
                 val b64 = value.substring(comma + 1)
                 val bytes = Base64.decode(b64, Base64.DEFAULT)
-                val artwork = Artwork()
-                artwork.setBinaryData(bytes)
-                artwork.setMimeType(mime)
-                artwork.setPictureType(Artwork.PICTURE_TYPE_COVER_FRONT)
+                val artwork = ArtworkFactory.getNew()
+                artwork.binaryData = bytes
+                artwork.mimeType = mime
+                artwork.pictureType = 3
                 tag.setField(artwork)
                 changed = true
               }
@@ -325,7 +326,7 @@ class AudioMetadataModule(reactContext: ReactApplicationContext) :
 
   /** Copy the original content URI into a cache-dir temp file (never touches the original). */
   private fun copyOriginalToTemp(resolver: ContentResolver, uri: Uri): File? {
-    val cacheDir = reactApplication.getCacheDir()
+    val cacheDir = reactApplicationContext.cacheDir
     val tempDir = File(cacheDir, TEMP_DIR_NAME)
     if (!tempDir.exists() && !tempDir.mkdirs()) {
       Log.w(TAG, "Could not create cache dir $tempDir")
@@ -377,7 +378,7 @@ class AudioMetadataModule(reactContext: ReactApplicationContext) :
 
   private fun setField(tag: Tag, fieldKey: FieldKey, value: String?): Boolean {
     if (value == null || value.isBlank()) return false
-    tag.setField(TagTextField.createField(fieldKey, value))
+    tag.setField(fieldKey, value)
     return true
   }
 

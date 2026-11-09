@@ -32,19 +32,29 @@ const withAudioMetadata = (config) => {
 
   // Register the native package in MainApplication
   config = withMainApplication(config, (config) => {
-    const modResults = config.modResults;
-    if (!modResults.contents.includes("AudioMetadataPackage")) {
-      // Add import
-      modResults.contents = modResults.contents.replace(
-        /package com\.aaditya_aks\.muzify;/,
-        "package com.aaditya_aks.muzify;\n\nimport com.muzify.audiometadata.AudioMetadataPackage;"
-      );
+    let contents = config.modResults.contents;
+    if (!contents.includes("AudioMetadataPackage")) {
+      // 1. Add import (handles Kotlin without semicolon and Java with semicolon)
+      if (contents.includes("package com.aaditya_aks.muzify")) {
+        contents = contents.replace(
+          /package com\.aaditya_aks\.muzify;?/,
+          "package com.aaditya_aks.muzify\n\nimport com.muzify.audiometadata.AudioMetadataPackage;"
+        );
+      }
 
-      // Add to getPackages()
-      modResults.contents = modResults.contents.replace(
-        /packages\.add\(new\s+\w+Package\(\)/,
-        "packages.add(new AudioMetadataPackage())\n        packages.add(new"
-      );
+      // 2. Add to packageList (Kotlin in Expo SDK 57 / React Native 0.86)
+      if (contents.includes("PackageList(this).packages.apply {")) {
+        contents = contents.replace(
+          /PackageList\(this\)\.packages\.apply \{/,
+          "PackageList(this).packages.apply {\n          add(AudioMetadataPackage())"
+        );
+      } else if (/packages\.add\(new\s+\w+Package\(\)/.test(contents)) {
+        contents = contents.replace(
+          /packages\.add\(new\s+\w+Package\(\)/,
+          "packages.add(new AudioMetadataPackage())\n        packages.add(new"
+        );
+      }
+      config.modResults.contents = contents;
     }
     return config;
   });
