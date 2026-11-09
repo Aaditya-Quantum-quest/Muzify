@@ -1,0 +1,2 @@
+-keep class com.muzify.audiometadata.** { *; }
+-keep class org.jaudiotagger.** { *; }

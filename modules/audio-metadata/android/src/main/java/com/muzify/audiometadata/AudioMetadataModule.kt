@@ -46,7 +46,7 @@ class AudioMetadataModule(reactContext: ReactApplicationContext) :
 
     // Formats Jaudiotagger can actually read/write (verified against 3.0.1 jar).
     // WAV / AIFF deliberately excluded: no standard tag frame container.
-    private const val SUPPORTED_EXTENSIONS = listOf("mp3", "m4a", "aac", "flac", "ogg", "opus")
+    private val SUPPORTED_EXTENSIONS = listOf("mp3", "m4a", "aac", "flac", "ogg", "opus")
 
     private const val TEMP_DIR_NAME = "muzify_tag_edit"
   }
@@ -286,7 +286,7 @@ class AudioMetadataModule(reactContext: ReactApplicationContext) :
       }
 
       // Stage 3: validate by re-reading the temp file.
-      AudioFileIO.write(audioFile, tempFile)
+      AudioFileIO.write(audioFile)
 
       val validated = AudioFileIO.read(tempFile)
       val writtenTag = validated.tag
@@ -309,9 +309,12 @@ class AudioMetadataModule(reactContext: ReactApplicationContext) :
     } catch (e: org.jaudiotagger.tag.TagException) {
       Log.w(TAG, "Tag write failed", e)
       promise.reject("TAG_WRITE_FAILED", "Tag write failed: ${e.message}")
-    } catch (e: org.jaudiotagger.audio.AudioFileReadException) {
+    } catch (e: org.jaudiotagger.audio.exceptions.CannotReadException) {
       Log.w(TAG, "Audio file read failed", e)
       promise.reject("READ_FAILED", "Audio file read failed: ${e.message}")
+    } catch (e: org.jaudiotagger.audio.exceptions.CannotWriteException) {
+      Log.w(TAG, "Audio file write failed", e)
+      promise.reject("WRITE_FAILED", "Audio file write failed: ${e.message}")
     } catch (e: IOException) {
       Log.w(TAG, "IO failure during tag write", e)
       promise.reject("IO_FAILED", "IO failure during tag write: ${e.message}")

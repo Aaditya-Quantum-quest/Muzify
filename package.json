@@ -57,6 +57,15 @@
     "lint": "expo lint"
   },
   "private": true,
+  "expo": {
+    "autolinking": {
+      "exclude": [
+        "@muzify/audio-metadata",
+        "muzify-audio-metadata",
+        "audio-metadata"
+      ]
+    }
+  },
   "devDependencies": {
     "babel-preset-expo": "^57.0.0",
     "eslint": "^9.0.0",

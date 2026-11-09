@@ -1,57 +1,42 @@
-buildscript {
-    ext.safeExtGet = { prop, fallback ->
-        rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
-    }
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath 'com.android.tools.build:gradle'
-        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin'
-    }
-}
-
-apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
+apply plugin: "com.android.library"
+apply plugin: "kotlin-android"
 
 def safeExtGet(prop, fallback) {
-    rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+  rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
 }
 
 android {
-    namespace "com.muzify.audiometadata"
-    compileSdkVersion safeExtGet('compileSdkVersion', 35)
+  namespace "com.muzify.audiometadata"
+  compileSdk safeExtGet("compileSdkVersion", 35)
 
-    defaultConfig {
-        minSdkVersion safeExtGet('minSdkVersion', 24)
-        targetSdkVersion safeExtGet('targetSdkVersion', 35)
-        versionCode 1
-        versionName "1.0.0"
+  defaultConfig {
+    minSdk safeExtGet("minSdkVersion", 24)
+    targetSdk safeExtGet("targetSdkVersion", 35)
+    consumerProguardFiles "proguard-rules.pro"
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = "17"
+  }
+
+  sourceSets {
+    main {
+      java.srcDirs += "src/main/java"
     }
+  }
 
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
-    lintOptions {
-        abortOnError false
-    }
-}
-
-repositories {
-    google()
-    mavenCentral()
-    maven { url 'https://www.jitpack.io' }
+  lint {
+    abortOnError false
+  }
 }
 
 dependencies {
-    implementation "com.facebook.react:react-android"
-    implementation "org.jetbrains.kotlin:kotlin-stdlib"
-    api "net.jthink:jaudiotagger:3.0.1"
+  implementation "com.facebook.react:react-android"
+  implementation "org.jetbrains.kotlin:kotlin-stdlib"
+  api "net.jthink:jaudiotagger:3.0.1"
 }
