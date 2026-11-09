@@ -1,19 +1,12 @@
 import { Tabs } from "expo-router";
-import { View } from "react-native";
 import "../../../global.css";
 
 import BottomBar from "../../components/ui/BottomBar";
-import MiniPlayer from "../../components/ui/MiniPlayer";
 
 function AppTabBar(props) {
   const current = props.state.routes[props.state.index]?.name;
   if (current === "Player") return null;
-  return (
-    <View>
-      <MiniPlayer />
-      <BottomBar {...props} />
-    </View>
-  );
+  return <BottomBar {...props} />;
 }
 
 export default function TabsLayout() {

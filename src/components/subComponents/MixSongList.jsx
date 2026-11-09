@@ -581,6 +581,7 @@ const ActiveCard = memo(function ActiveCard({
   position,
   onSeek,
   onViewDetails,
+  onCollapse,
   active = true,
 }) {
   return (
@@ -600,33 +601,40 @@ const ActiveCard = memo(function ActiveCard({
           }}
         >
           <View className="rounded-[25px] bg-[#0f0e11] p-3.5">
-            <View className="flex-row items-center">
-              <Cover track={track} size={76} radius={22}>
-                <EqualizerBars active={active} />
-              </Cover>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={onCollapse}
+              accessibilityRole="button"
+              accessibilityLabel={`Stop ${track.title}`}
+            >
+              <View className="flex-row items-center">
+                <Cover track={track} size={76} radius={22}>
+                  <EqualizerBars active={active} />
+                </Cover>
 
-              <View className="ml-3.5 flex-1">
-                <View className="flex-row items-center">
-                  <Text
-                    numberOfLines={1}
-                    className="shrink text-lg font-medium tracking-wide"
-                    style={{ color: ACCENT }}
-                  >
-                    {track.title}
-                  </Text>
-                  {track.explicit && <ExplicitTag />}
-                </View>
-                <View className="mt-1 flex-row items-center">
-                  <Text
-                    numberOfLines={1}
-                    className="shrink text-[13px] text-white/55"
-                  >
-                    {track.artist}
-                  </Text>
-                  <QualityBadge quality={track.quality} />
+                <View className="ml-3.5 flex-1">
+                  <View className="flex-row items-center">
+                    <Text
+                      numberOfLines={1}
+                      className="shrink text-lg font-medium tracking-wide"
+                      style={{ color: ACCENT }}
+                    >
+                      {track.title}
+                    </Text>
+                    {track.explicit && <ExplicitTag />}
+                  </View>
+                  <View className="mt-1 flex-row items-center">
+                    <Text
+                      numberOfLines={1}
+                      className="shrink text-[13px] text-white/55"
+                    >
+                      {track.artist}
+                    </Text>
+                    <QualityBadge quality={track.quality} />
+                  </View>
                 </View>
               </View>
-            </View>
+            </TouchableOpacity>
 
             <View className="-mx-1 mt-2.5">
               <Beam
@@ -692,6 +700,7 @@ export const MixSongItem = memo(function MixSongItem({
         position={position}
         onSeek={onSeek}
         onViewDetails={onViewDetails}
+        onCollapse={() => onSelect(index)}
         active={isScreenActive}
       />
     );

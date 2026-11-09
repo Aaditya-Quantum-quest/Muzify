@@ -716,7 +716,7 @@ export default function LibraryScreen() {
       <FlatList
         key={gridView ? "grid" : "list"}
         data={filtered}
-        extraData={cur}
+        extraData={`${cur}-${playing}`}
         numColumns={gridView ? 2 : 1}
         keyExtractor={(x) => String(x.id)}
         ListHeaderComponent={header}
@@ -766,7 +766,7 @@ export default function LibraryScreen() {
                 })}
                 index={index}
                 firstMount={false}
-                expanded={false}
+                expanded={isCur && playing}
                 position={mixPosition}
                 onSelect={() => play(item.id)}
                 onSeek={(seconds) => seekTo(seconds)}
