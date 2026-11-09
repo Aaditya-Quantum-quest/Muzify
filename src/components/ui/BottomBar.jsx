@@ -91,8 +91,8 @@ function TabItem({
   const showBadge = badge != null && badge !== false;
 
   const handlePress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onPress();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   return (
@@ -266,7 +266,7 @@ export default function BottomBar({ state, descriptors, navigation }) {
       placed.current = true;
     } else {
       indicatorX.value = withTiming(target, {
-        duration: 280,
+        duration: 140,
         easing: Easing.bezier(0.22, 1, 0.36, 1),
       });
     }

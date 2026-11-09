@@ -57,6 +57,28 @@ export const getAllSongs = () => {
   );
 };
 
+const SONG_ORDER_BY = {
+  0: "added_at DESC, id DESC",
+  1: "title COLLATE NOCASE ASC",
+  2: "title COLLATE NOCASE ASC",
+};
+
+export const getSongsFiltered = (search = "", sort = 0) => {
+  const searchTerm = `%${search.trim()}%`;
+  const safeOrder = SONG_ORDER_BY[sort] || SONG_ORDER_BY[0];
+
+  return db.getAllSync(
+    `
+      SELECT * FROM songs
+      WHERE title LIKE ?
+         OR artist LIKE ?
+         OR album LIKE ?
+      ORDER BY ${safeOrder}
+    `,
+    [searchTerm, searchTerm, searchTerm]
+  );
+};
+
 
 
 // GET SONGS IN BATCHES

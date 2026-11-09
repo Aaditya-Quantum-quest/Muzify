@@ -515,7 +515,6 @@ export function useStatistics() {
   }, []);
 
   useEffect(() => {
-    refresh();
     const unsub = subscribeListenChanged(() => {
       if (!focusedRef.current) return;
       if (timerRef.current) return;
@@ -531,7 +530,9 @@ export function useStatistics() {
   }, [refresh]);
 
   useEffect(() => {
-    if (focused) refresh();
+    if (!focused) return;
+    const id = setTimeout(() => refresh(), 0);
+    return () => clearTimeout(id);
   }, [focused, refresh]);
 
   return useMemo(() => ({ ...stats, refresh }), [stats, refresh]);

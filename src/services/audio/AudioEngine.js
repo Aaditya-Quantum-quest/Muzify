@@ -46,8 +46,11 @@ export class AudioEngine {
     }
 
     this.player.replace({ uri });
-    this._applyLockScreen(metadata, source);
     return true;
+  }
+
+  applyLockScreen(metadata, source) {
+    this._applyLockScreen(metadata, source);
   }
 
   _applyLockScreen(metadata, source) {

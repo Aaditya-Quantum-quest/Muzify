@@ -16,14 +16,12 @@ export const audioConfig = {
 
 export async function configureAudioSession() {
   try {
-    if (Platform.OS === 'android' && typeof requestNotificationPermissionsAsync === 'function') {
-      try {
-        await requestNotificationPermissionsAsync();
-      } catch (error) {
-        console.warn('[audioConfig] notification permission failed:', error);
-      }
-    }
     await setAudioModeAsync(audioConfig);
+    if (Platform.OS === 'android' && typeof requestNotificationPermissionsAsync === 'function') {
+      requestNotificationPermissionsAsync().catch((error) => {
+        console.warn('[audioConfig] notification permission failed:', error);
+      });
+    }
     return true;
   } catch (error) {
     console.warn('[audioConfig] setAudioModeAsync failed:', error);

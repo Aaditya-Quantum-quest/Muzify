@@ -6,8 +6,7 @@ import {
 } from "react";
 
 import {
-  getSongsPage,
-  getSongsCount,
+  getSongsFiltered,
   addSong as insertSong,
   updateSong as updateSongQuery,
   deleteSong as deleteSongQuery,
@@ -16,13 +15,9 @@ import { syncSongUpdated, syncSongDeleted } from "../services/artists/artistSync
 
 import { importMusicFromSavedFolder, enrichExistingSongs } from "../services/musicImporter.js";
 
-const PAGE_SIZE = 30;
-
 export const useSongs = ({ search = "", sort = 0 } = {}) => {
   const [songs, setSongs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
   const [totalSongs, setTotalSongs] = useState(0);
 
   const [error, setError] = useState(null);
@@ -33,32 +28,21 @@ export const useSongs = ({ search = "", sort = 0 } = {}) => {
   const [enriching, setEnriching] = useState(false);
   const [enrichProgress, setEnrichProgress] = useState(null);
 
-  const loadingMoreRef = useRef(false);
   const requestIdRef = useRef(0);
 
-  // LOAD FIRST 30 SONGS
   const refreshSongs = useCallback(() => {
     const requestId = ++requestIdRef.current;
 
-    loadingMoreRef.current = false;
     setLoading(true);
-    setLoadingMore(false);
     setError(null);
 
     try {
-      const total = getSongsCount(search);
-      const data = getSongsPage(
-        PAGE_SIZE,
-        0,
-        search,
-        sort
-      );
+      const data = getSongsFiltered(search, sort);
 
       if (requestId !== requestIdRef.current) return;
 
       setSongs(data);
-      setTotalSongs(total);
-      setHasMore(data.length < total);
+      setTotalSongs(data.length);
     } catch (err) {
       console.error("Failed to load songs:", err);
       setError(err);
@@ -68,65 +52,6 @@ export const useSongs = ({ search = "", sort = 0 } = {}) => {
       }
     }
   }, [search, sort]);
-
-  // LOAD NEXT 30 SONGS
-  const loadMoreSongs = useCallback(() => {
-    if (
-      loading ||
-      loadingMoreRef.current ||
-      !hasMore
-    ) {
-      return;
-    }
-
-    loadingMoreRef.current = true;
-    setLoadingMore(true);
-
-    const requestId = requestIdRef.current;
-    const offset = songs.length;
-
-    try {
-      const nextSongs = getSongsPage(
-        PAGE_SIZE,
-        offset,
-        search,
-        sort
-      );
-
-      if (requestId !== requestIdRef.current) return;
-
-      setSongs((previous) => {
-        const existingIds = new Set(
-          previous.map((song) => song.id)
-        );
-
-        const uniqueSongs = nextSongs.filter(
-          (song) => !existingIds.has(song.id)
-        );
-
-        return [...previous, ...uniqueSongs];
-      });
-
-      setHasMore(offset + nextSongs.length < totalSongs);
-    } catch (err) {
-      if (requestId === requestIdRef.current) {
-        console.error("Failed to load more songs:", err);
-        setError(err);
-      }
-    } finally {
-      if (requestId === requestIdRef.current) {
-        loadingMoreRef.current = false;
-        setLoadingMore(false);
-      }
-    }
-  }, [
-    loading,
-    hasMore,
-    songs.length,
-    search,
-    sort,
-    totalSongs,
-  ]);
 
   // SCAN AND IMPORT
   const scanAndImport = useCallback(async () => {
@@ -236,8 +161,8 @@ export const useSongs = ({ search = "", sort = 0 } = {}) => {
   return {
     songs,
     loading,
-    loadingMore,
-    hasMore,
+    loadingMore: false,
+    hasMore: false,
     totalSongs,
     error,
     scanning,
@@ -248,7 +173,7 @@ export const useSongs = ({ search = "", sort = 0 } = {}) => {
     updateSong,
     deleteSong,
     refreshSongs,
-    loadMoreSongs,
+    loadMoreSongs: () => {},
     scanAndImport,
     enrichSongs,
   };

@@ -5,23 +5,26 @@ import "../../../global.css";
 import BottomBar from "../../components/ui/BottomBar";
 import MiniPlayer from "../../components/ui/MiniPlayer";
 
+function AppTabBar(props) {
+  const current = props.state.routes[props.state.index]?.name;
+  if (current === "Player") return null;
+  return (
+    <View>
+      <MiniPlayer />
+      <BottomBar {...props} />
+    </View>
+  );
+}
+
 export default function TabsLayout() {
   return (
     <Tabs
-      tabBar={(props) => {
-        const current = props.state.routes[props.state.index]?.name;
-        if (current === "Player") return null;
-        return (
-          <View>
-            <MiniPlayer />
-            <BottomBar {...props} />
-          </View>
-        );
-      }}
+      tabBar={AppTabBar}
+      detachInactiveScreens={false}
       screenOptions={{
         headerShown: false,
-        lazy: true,
-        freezeOnBlur: true,
+        lazy: false,
+        freezeOnBlur: false,
       }}
     >
       <Tabs.Screen name="home" options={{ title: "Home" }} />

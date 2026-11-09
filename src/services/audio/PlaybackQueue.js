@@ -15,36 +15,47 @@ export class PlaybackQueue {
     this._advancing = false;
   }
 
-  async _ensureEngine() {
-    if (this._engineReady) return;
-    if (!this._readyPromise) {
-      this._readyPromise = (async () => {
-        await configureAudioSessionOnce();
-        this.engine = new AudioEngine({
-          onStatus: (status) => this._handleEngineStatus(status),
-          onTrackEnded: () => this._handleTrackEnded(),
-        });
-        this.engine.attachListener();
-        this._engineReady = true;
-      })();
-    }
-    return this._readyPromise;
+  _ensureEngine() {
+    if (this.engine) return;
+    this.engine = new AudioEngine({
+      onStatus: (status) => this._handleEngineStatus(status),
+      onTrackEnded: () => this._handleTrackEnded(),
+    });
+    this.engine.attachListener();
+    this._engineReady = true;
+    configureAudioSessionOnce();
+  }
+
+  _playLoaded(track, source) {
+    const loaded = this.engine.load(source, track);
+    if (!loaded) return false;
+    this.engine.play();
+    queueMicrotask(() => {
+      this.engine?.applyLockScreen(track, source);
+      this._recordPlay(track);
+      listenTracker.start(track, track.duration);
+      if (this._onTrackChange) this._onTrackChange(track, this.currentIdx);
+    });
+    return true;
   }
 
   async setQueue(songs = [], startIdx = 0) {
     this.queue = Array.isArray(songs) ? songs : [];
+    this._ensureEngine();
     if (!this.queue.length) {
-      await this._ensureEngine();
       this.engine.load(null);
       return;
     }
     this.currentIdx = Math.min(Math.max(0, startIdx), this.queue.length - 1);
-    await this._loadTrackAt(this.currentIdx);
-    await this.playCurrent();
+    this._loadTrackAt(this.currentIdx);
   }
 
   getCurrentTrack() {
     return this.queue[this.currentIdx] ?? null;
+  }
+
+  getCurrentPosition() {
+    return this.engine?.getCurrentPosition?.() ?? 0;
   }
 
   getQueue() {
@@ -92,7 +103,7 @@ export class PlaybackQueue {
   }
 
   async togglePlay() {
-    await this._ensureEngine();
+    this._ensureEngine();
     if (!this.queue.length) return;
     if (this.engine.isPlaying()) {
       this.engine.pause();
@@ -106,13 +117,13 @@ export class PlaybackQueue {
   }
 
   async seek(seconds) {
-    await this._ensureEngine();
+    this._ensureEngine();
     return this.engine.seek(seconds);
   }
 
   async stop() {
     listenTracker.end();
-    await this._ensureEngine();
+    this._ensureEngine();
     this.engine.stop();
   }
 
@@ -121,23 +132,18 @@ export class PlaybackQueue {
     return { uri: track.file_uri, name: track.title };
   }
 
-  async _loadTrackAt(idx) {
+  _loadTrackAt(idx) {
     if (!this.queue.length) return false;
+    this._ensureEngine();
     const len = this.queue.length;
     let safeIdx = ((idx % len) + len) % len;
     let attempts = 0;
 
     while (attempts < len) {
       const track = this.queue[safeIdx];
-      await this._ensureEngine();
-      const loaded = this.engine.load(this._sourceFor(track), track);
-      if (loaded) {
-        this.currentIdx = safeIdx;
-        this._recordPlay(track);
-        listenTracker.start(track, track.duration);
-        if (this._onTrackChange) this._onTrackChange(track, this.currentIdx);
-        return true;
-      }
+      const source = this._sourceFor(track);
+      this.currentIdx = safeIdx;
+      if (this._playLoaded(track, source)) return true;
       attempts += 1;
       safeIdx = (safeIdx + 1) % len;
     }
@@ -146,8 +152,8 @@ export class PlaybackQueue {
     return false;
   }
 
-  async playCurrent() {
-    await this._ensureEngine();
+  playCurrent() {
+    this._ensureEngine();
     this.engine.play();
   }
 
@@ -173,8 +179,7 @@ export class PlaybackQueue {
           }
         }
       }
-      const loaded = await this._loadTrackAt(nextIdx);
-      if (loaded) await this.playCurrent();
+      this._loadTrackAt(nextIdx);
     } finally {
       this._advancing = false;
     }
@@ -189,8 +194,7 @@ export class PlaybackQueue {
     }
     listenTracker.end();
     const prevIdx = this.currentIdx - 1;
-    const loaded = await this._loadTrackAt(prevIdx < 0 ? this.queue.length - 1 : prevIdx);
-    if (loaded) await this.playCurrent();
+    this._loadTrackAt(prevIdx < 0 ? this.queue.length - 1 : prevIdx);
   }
 
   toggleShuffle() {
@@ -207,8 +211,7 @@ export class PlaybackQueue {
 
   async setTrackIdx(idx) {
     if (idx !== this.currentIdx) listenTracker.skip();
-    const loaded = await this._loadTrackAt(idx);
-    if (loaded) await this.playCurrent();
+    this._loadTrackAt(idx);
   }
 
   _recordPlay(track) {

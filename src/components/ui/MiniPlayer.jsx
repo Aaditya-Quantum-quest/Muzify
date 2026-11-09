@@ -45,6 +45,7 @@ import Svg, { Circle, Defs, LinearGradient, Path, RadialGradient, Rect, Stop } f
 import { useRouter } from "expo-router";
 
 import { usePlayer } from "../../context/player-context";
+import { playbackQueue } from "../../services/audio/PlaybackQueue";
 
 /* ───────────── constants ───────────── */
 const IDLE_MS = 5000; // no touch for this long → orb
@@ -257,8 +258,16 @@ export default function MiniPlayerBar({
   const togglePlay = player.togglePlay ?? player.togglePlayPause ?? player.toggle;
   const shuffle = !!player.shuffle;
   const toggleShuffle = player.toggleShuffle;
-  const pos = Number(player.pos ?? player.position ?? 0) || 0; // seconds
+  const [pos, setPos] = useState(0);
   const seekTo = player.seekTo ?? player.seek; // optional: (seconds) => void
+
+  useEffect(() => {
+    if (!playing) return;
+    const sync = () => setPos(Number(playbackQueue.getCurrentPosition?.()) || 0);
+    sync();
+    const id = setInterval(sync, 250);
+    return () => clearInterval(id);
+  }, [playing]);
 
   const systemReduce = useReducedMotion();
   const reduceMotion = respectReducedMotion && systemReduce;

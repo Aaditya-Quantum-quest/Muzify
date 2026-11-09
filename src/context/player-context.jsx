@@ -44,7 +44,6 @@ export function PlayerProvider({ children }) {
   useEffect(() => {
     playbackQueue.setCallbacks({
       onPlayingChange: setPlaying,
-      onPosChange: setPos,
       onShuffleChange: setShuffle,
       onRepeatChange: setRepeat,
       onTrackChange: (trackObj, idx) => {
@@ -79,14 +78,14 @@ export function PlayerProvider({ children }) {
     playbackQueue.goPrev();
   }, []);
 
-  const playSongs = useCallback(async (songs, startIndex = 0) => {
+  const playSongs = useCallback((songs, startIndex = 0) => {
     if (!Array.isArray(songs) || songs.length === 0) return;
     const safeIndex = Math.min(Math.max(0, startIndex), songs.length - 1);
+    playbackQueue.setQueue(songs, safeIndex);
     setQueue(songs);
     setQueueIdx(safeIndex);
     setTrackIdxState(safeIndex);
     setPos(0);
-    await playbackQueue.setQueue(songs, safeIndex);
   }, []);
 
   const setTrackFromIdx = useCallback((idx) => {

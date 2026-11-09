@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -41,6 +41,7 @@ import {
   parseMetadataFromFilename,
 } from "../../services/folderScanner.js";
 import { usePlayer } from "../../context/player-context";
+import { playbackQueue } from "../../services/audio/PlaybackQueue";
 import { MixSongItem, songToMixTrack } from "../../components/subComponents/MixSongList";
 import { useSharedValue } from "react-native-reanimated";
 
@@ -515,7 +516,7 @@ export default function LibraryScreen() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [shuffled, setShuffled] = useState(false);
-  const { playSongs, togglePlay, track, playing, pos, seekTo } = usePlayer();
+  const { playSongs, togglePlay, track, playing, seekTo } = usePlayer();
   const cur = track?.id;
   const mixPosition = useSharedValue(0);
   const [firstMount, setFirstMount] = useState(true);
@@ -526,8 +527,14 @@ export default function LibraryScreen() {
   }, []);
 
   useEffect(() => {
-    mixPosition.value = Number(pos) || 0;
-  }, [pos, mixPosition]);
+    if (!isFocused) return;
+    const syncPos = () => {
+      mixPosition.value = Number(playbackQueue.getCurrentPosition?.()) || 0;
+    };
+    syncPos();
+    const id = setInterval(syncPos, 250);
+    return () => clearInterval(id);
+  }, [isFocused, mixPosition]);
 
   // Long-press context menu state
   const [ctxItem, setCtxItem] = useState(null);
@@ -535,17 +542,12 @@ export default function LibraryScreen() {
   // Album-art preview overlay (shown when user taps "Album Art" in the menu)
   const [artworkPreview, setArtworkPreview] = useState(null);
 
-  // Paginated songs
   const {
     songs: dbSongs,
     scanAndImport,
     scanning,
     scanResult,
     loading,
-    loadingMore,
-    hasMore,
-    totalSongs,
-    loadMoreSongs,
     refreshSongs,
   } = useSongs({
     search: filter === "All" ? query : "",
@@ -593,7 +595,7 @@ export default function LibraryScreen() {
   // Keep the rest of your existing LibraryScreen code below this point.
   // Map real songs from SQLite into item-shaped objects for the "All" category.
   // Uses smart filename fallback when tags in the file are absent or generic.
-  const libraryItems = dbSongs.map((song) => {
+  const libraryItems = useMemo(() => dbSongs.map((song) => {
     const isUnknownArtist = !song.artist || song.artist === "Unknown Artist" || song.artist === "Unknown";
     const isUnknownAlbum = !song.album || song.album === "Unknown Album" || song.album === "Unknown";
     const isBadTitle = !song.title || looksLikeUri(song.title);
@@ -636,7 +638,7 @@ export default function LibraryScreen() {
       // Raw record so Info/Tags can read every field without re-querying.
       song,
     };
-  });
+  }), [dbSongs]);
 
   const collectionItems =
     filter === "All" ? [] : LIBRARY_ITEMS.filter((item) => item.cat === filter);
@@ -660,7 +662,7 @@ export default function LibraryScreen() {
                 : b.songs - a.songs,
           );
 
-  const play = (id) => {
+  const play = useCallback((id) => {
     if (filter !== "All") return;
     const songIndex = dbSongs.findIndex((song) => song.id === id);
     if (songIndex < 0) return;
@@ -669,7 +671,7 @@ export default function LibraryScreen() {
       return;
     }
     playSongs(dbSongs, songIndex);
-  };
+  }, [filter, dbSongs, track?.id, togglePlay, playSongs]);
 
   const goArtists = () => router.push("/settings");
 
@@ -720,6 +722,7 @@ export default function LibraryScreen() {
       <FlatList
         key={gridView ? "grid" : "list"}
         data={filtered}
+        extraData={`${cur}-${playing}`}
         numColumns={gridView ? 2 : 1}
         keyExtractor={(x) => String(x.id)}
         ListHeaderComponent={header}
@@ -728,15 +731,10 @@ export default function LibraryScreen() {
         scrollEventThrottle={16}
         onScroll={onScroll}
         onScrollBeginDrag={() => setMenuOpen(false)}
-        onEndReached={() => {
-          if (filter === "All" && hasMore && !loadingMore) {
-            loadMoreSongs();
-          }
-        }}
-        onEndReachedThreshold={0.5}
-        initialNumToRender={10}
-        maxToRenderPerBatch={10}
-        windowSize={7}
+        initialNumToRender={16}
+        maxToRenderPerBatch={16}
+        windowSize={11}
+        removeClippedSubviews
         contentContainerStyle={{
           paddingHorizontal: sidePad,
           gap: filter === "All" ? 6 : 12, // song rows carry their own padding
