@@ -161,8 +161,6 @@ export const useSongs = ({ search = "", sort = 0 } = {}) => {
   return {
     songs,
     loading,
-    loadingMore: false,
-    hasMore: false,
     totalSongs,
     error,
     scanning,
@@ -173,7 +171,6 @@ export const useSongs = ({ search = "", sort = 0 } = {}) => {
     updateSong,
     deleteSong,
     refreshSongs,
-    loadMoreSongs: () => {},
     scanAndImport,
     enrichSongs,
   };

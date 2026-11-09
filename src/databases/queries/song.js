@@ -78,58 +78,6 @@ export const getSongsFiltered = (search = "", sort = 0) => {
     [searchTerm, searchTerm, searchTerm]
   );
 };
-
-
-
-// GET SONGS IN BATCHES
-export const getSongsPage = (
-  limit = 30,
-  offset = 0,
-  search = "",
-  sort = 0
-) => {
-  const searchTerm = `%${search.trim()}%`;
-
-  const orderBy = {
-    0: "added_at DESC, id DESC",
-    1: "title COLLATE NOCASE ASC",
-    2: "title COLLATE NOCASE ASC",
-  };
-
-  const safeOrder = orderBy[sort] || orderBy[0];
-
-  return db.getAllSync(
-    `
-      SELECT * FROM songs
-      WHERE title LIKE ?
-         OR artist LIKE ?
-         OR album LIKE ?
-      ORDER BY ${safeOrder}
-      LIMIT ? OFFSET ?
-    `,
-    [searchTerm, searchTerm, searchTerm, limit, offset]
-  );
-};
-
-// GET TOTAL SONG COUNT
-export const getSongsCount = (search = "") => {
-  const searchTerm = `%${search.trim()}%`;
-
-  const result = db.getFirstSync(
-    `
-      SELECT COUNT(*) AS total
-      FROM songs
-      WHERE title LIKE ?
-         OR artist LIKE ?
-         OR album LIKE ?
-    `,
-    [searchTerm, searchTerm, searchTerm]
-  );
-
-  return result?.total ?? 0;
-};
-
-
 // GET SONG BY ID
 export const getSongById = (id) => {
   return db.getFirstSync(

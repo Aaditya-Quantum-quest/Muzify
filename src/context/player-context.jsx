@@ -53,6 +53,7 @@ export function PlayerProvider({ children }) {
       },
     });
     playbackQueue._ensureEngine?.();
+    playbackQueue.engine?.ensureAudioSession?.();
     return () => {
       playbackQueue.setCallbacks({});
     };
@@ -82,10 +83,13 @@ export function PlayerProvider({ children }) {
     if (!Array.isArray(songs) || songs.length === 0) return;
     const safeIndex = Math.min(Math.max(0, startIndex), songs.length - 1);
     playbackQueue.setQueue(songs, safeIndex);
-    setQueue(songs);
-    setQueueIdx(safeIndex);
-    setTrackIdxState(safeIndex);
-    setPos(0);
+    setPlaying(true);
+    setTimeout(() => {
+      setQueue(songs);
+      setQueueIdx(safeIndex);
+      setTrackIdxState(safeIndex);
+      setPos(0);
+    }, 0);
   }, []);
 
   const setTrackFromIdx = useCallback((idx) => {

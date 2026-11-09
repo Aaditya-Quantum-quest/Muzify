@@ -519,12 +519,6 @@ export default function LibraryScreen() {
   const { playSongs, togglePlay, track, playing, seekTo } = usePlayer();
   const cur = track?.id;
   const mixPosition = useSharedValue(0);
-  const [firstMount, setFirstMount] = useState(true);
-
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setFirstMount(false));
-    return () => cancelAnimationFrame(id);
-  }, []);
 
   useEffect(() => {
     if (!isFocused) return;
@@ -722,7 +716,7 @@ export default function LibraryScreen() {
       <FlatList
         key={gridView ? "grid" : "list"}
         data={filtered}
-        extraData={`${cur}-${playing}`}
+        extraData={cur}
         numColumns={gridView ? 2 : 1}
         keyExtractor={(x) => String(x.id)}
         ListHeaderComponent={header}
@@ -771,8 +765,8 @@ export default function LibraryScreen() {
                   quality: item.format,
                 })}
                 index={index}
-                firstMount={firstMount}
-                expanded={isCur}
+                firstMount={false}
+                expanded={false}
                 position={mixPosition}
                 onSelect={() => play(item.id)}
                 onSeek={(seconds) => seekTo(seconds)}

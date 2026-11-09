@@ -24,7 +24,8 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         lazy: false,
-        freezeOnBlur: false,
+        freezeOnBlur: true,
+        animation: "none",
       }}
     >
       <Tabs.Screen name="home" options={{ title: "Home" }} />

@@ -27,9 +27,11 @@ export class PlaybackQueue {
   }
 
   _playLoaded(track, source) {
+    this.engine.ensureAudioSession?.();
     const loaded = this.engine.load(source, track);
     if (!loaded) return false;
     this.engine.play();
+    if (this._onPlayingChange) this._onPlayingChange(true);
     queueMicrotask(() => {
       this.engine?.applyLockScreen(track, source);
       this._recordPlay(track);

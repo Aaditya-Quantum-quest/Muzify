@@ -16,7 +16,7 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
 } from "react-native-reanimated";
-import * as Haptics from "expo-haptics";
+
 
 /* ───────────── theme ───────────── */
 const AMBER = "#e49f33";
@@ -92,7 +92,6 @@ function TabItem({
 
   const handlePress = () => {
     onPress();
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   return (
@@ -380,7 +379,11 @@ export default function BottomBar({ state, descriptors, navigation }) {
             });
 
             if (!focused && !event.defaultPrevented) {
-              navigation.navigate(route.name, route.params);
+              if (typeof navigation.jumpTo === "function") {
+                navigation.jumpTo(route.name, route.params);
+              } else {
+                navigation.navigate(route.name, route.params);
+              }
             }
           };
 
