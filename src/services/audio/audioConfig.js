@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import {
   setAudioModeAsync,
   setIsAudioActiveAsync,
@@ -7,20 +8,24 @@ import {
 
 export const STATUS_UPDATE_INTERVAL = 250;
 
+const isExpoGo = Constants.appOwnership === 'expo';
+
 export const audioConfig = {
   playsInSilentMode: true,
   interruptionMode: 'doNotMix',
-  shouldPlayInBackground: true,
-  keepAudioSessionActive: true,
+  shouldPlayInBackground: !isExpoGo,
+  keepAudioSessionActive: !isExpoGo,
 };
 
 export async function configureAudioSession() {
   try {
     await setAudioModeAsync(audioConfig);
-    if (Platform.OS === 'android' && typeof requestNotificationPermissionsAsync === 'function') {
-      requestNotificationPermissionsAsync().catch((error) => {
-        console.warn('[audioConfig] notification permission failed:', error);
-      });
+    if (
+      Platform.OS === 'android' &&
+      Constants.appOwnership !== 'expo' &&
+      typeof requestNotificationPermissionsAsync === 'function'
+    ) {
+      requestNotificationPermissionsAsync().catch(() => {});
     }
     return true;
   } catch (error) {

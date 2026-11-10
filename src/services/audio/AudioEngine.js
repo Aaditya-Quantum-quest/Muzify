@@ -1,5 +1,8 @@
 import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
+import Constants from 'expo-constants';
 import { audioConfig, configureAudioSession, STATUS_UPDATE_INTERVAL } from './audioConfig';
+
+const isExpoGo = Constants.appOwnership === 'expo';
 
 const PLAYBACK_STATUS_UPDATE = 'playbackStatusUpdate';
 
@@ -54,6 +57,7 @@ export class AudioEngine {
   }
 
   _applyLockScreen(metadata, source) {
+    if (isExpoGo) return;
     try {
       if (typeof this.player.setActiveForLockScreen !== 'function') return;
       this.player.setActiveForLockScreen(true, {
@@ -62,8 +66,8 @@ export class AudioEngine {
         albumTitle: metadata?.album || undefined,
         artworkUrl: metadata?.artwork_uri || undefined,
       });
-    } catch (error) {
-      console.warn('[AudioEngine] setActiveForLockScreen failed:', error);
+    } catch {
+      // Expo Go and builds without AudioControlsService log this natively.
     }
   }
 
@@ -141,7 +145,7 @@ export class AudioEngine {
   destroy() {
     this.detachListener();
     try {
-      if (typeof this.player.clearLockScreenControls === 'function') {
+      if (!isExpoGo && typeof this.player.clearLockScreenControls === 'function') {
         this.player.clearLockScreenControls();
       }
     } catch (error) {
