@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 
 import DynamicNotch from './DynamicNotch';
 import { usePlayer } from '../../context/player-context';
@@ -44,6 +44,12 @@ function DynamicNotchHost({ top = 10 }) {
   }, [playing]);
 
   const trackId = track?.id;
+  const art = pickArt(track);
+  const notchTrack = useMemo(() => {
+    if (!track) return null;
+    return { title: track.title, artist: track.artist, art };
+  }, [Boolean(track), track?.id, track?.title, track?.artist, art]);
+
   useEffect(() => {
     // Zero, not readPosition(): the engine may still report the previous
     // track's offset for a frame after a queue jump.
@@ -66,7 +72,7 @@ function DynamicNotchHost({ top = 10 }) {
 
   return (
     <DynamicNotch
-      track={{ title: track.title, artist: track.artist, art: pickArt(track) }}
+      track={notchTrack}
       playing={!!playing}
       position={pos}
       duration={duration}

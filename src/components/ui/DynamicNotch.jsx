@@ -17,14 +17,14 @@
 // With no `track` prop it runs a self-playing demo.
 //
 // Performance notes:
-//  • Visualizer bars run fully on the native thread (no JS per frame).
-//  • The JS clock that morphs the hills runs ONLY while the player/volume
-//    view is visible AND music is playing; it pauses in the background.
+//  • Visualizer bars and notch morphs run outside the React render loop.
+//  • Seek-wave paths are static, avoiding per-frame JS work and SVG regeneration.
 //  • HillBar is memoized with stable callbacks; hardware-volume writes are throttled.
 //  • Palettes are cached per image; animated styles are memoized.
 
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, AppState, Easing, Image, NativeEventEmitter, NativeModules, PanResponder, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Image, NativeEventEmitter, NativeModules, PanResponder, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import Reanimated, { interpolate, runOnJS, useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { requireOptionalNativeModule } from 'expo-modules-core';
 
@@ -127,33 +127,8 @@ const usePalette = (uri) => {
   return pal;
 };
 
-/* ───────────── shared JS clock (only for the hills) ─────────────
-   starts with the first subscriber, stops with the last, pauses in background */
-const clock = { t: 0, subs: new Set(), id: null };
-const clockStart = () => {
-  if (clock.id || !clock.subs.size) return;
-  clock.id = setInterval(() => {
-    clock.t += 0.04;
-    clock.subs.forEach((fn) => fn(clock.t));
-  }, 40);
-};
-const clockStop = () => { clearInterval(clock.id); clock.id = null; };
-AppState.addEventListener('change', (s) => (s === 'active' ? clockStart() : clockStop()));
-
-const useClock = (active) => {
-  const [t, setT] = useState(clock.t);
-  useEffect(() => {
-    if (!active) return undefined;
-    clock.subs.add(setT);
-    if (AppState.currentState === 'active') clockStart();
-    return () => {
-      clock.subs.delete(setT);
-      if (!clock.subs.size) clockStop();
-    };
-  }, [active]);
-  return t;
-};
-
+/* The seek wave is deliberately static: regenerating several SVG paths at 25 Hz
+   occupied the JS thread and made the rest of the player feel unresponsive. */
 const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 /* ───────────── visualizer — native-driver animation, zero JS per frame ───────────── */
@@ -189,21 +164,20 @@ const Bars = memo(function Bars({ playing, pal, maxH = 20 }) {
 
 /* ───────────── hills seek bar (draggable) ───────────── */
 const PAD = 10, BASE = 28, SVG_H = 36, STEP = 4;
-const hills = (x0, x1, amp, k, speed, phase, t) => {
+const hills = (x0, x1, amp, k, phase) => {
   const L = x1 - x0;
   if (L < 4) return '';
   const scale = Math.min(1, L / 60);
   let d = `M${x0} ${BASE}`;
   for (let x = 0; x <= L; x += STEP) {
     const e = Math.pow(Math.sin((Math.PI * x) / L), 1.1);
-    d += ` L${(x0 + x).toFixed(0)} ${(BASE - amp * scale * e * (0.55 + 0.45 * Math.sin(x / k + t * speed + phase))).toFixed(1)}`;
+    d += ` L${(x0 + x).toFixed(0)} ${(BASE - amp * scale * e * (0.55 + 0.45 * Math.sin(x / k + phase))).toFixed(1)}`;
   }
   return `${d} L${x1.toFixed(0)} ${BASE} Z`;
 };
 
-const HillBar = memo(function HillBar({ width, value, animate, pal, onStart, onChange, onEnd }) {
+const HillBar = memo(function HillBar({ width, value, pal, onStart, onChange, onEnd }) {
   const [drag, setDrag] = useState(null);
-  const t = useClock(animate);
   const live = useRef({});
   live.current = { width, onStart, onChange, onEnd };
   const startP = useRef(0);
@@ -243,9 +217,9 @@ const HillBar = memo(function HillBar({ width, value, animate, pal, onStart, onC
   return (
     <View {...pan.panHandlers} style={{ width: total, height: 44, justifyContent: 'center' }}>
       <Svg pointerEvents="none" width={total} height={SVG_H} viewBox={`0 0 ${total} ${SVG_H}`}>
-        <Path d={hills(PAD, xp, 14, 26, 1.2, 0, t)} fill={pal.main} fillOpacity={0.9} />
-        <Path d={hills(PAD, xp, 17, 19, -1.6, 1.3, t)} fill={pal.light} fillOpacity={0.75} />
-        <Path d={hills(PAD + 14, xp, 9, 12, 2.1, 2.4, t)} fill={pal.mid} fillOpacity={0.8} />
+        <Path d={hills(PAD, xp, 14, 26, 0)} fill={pal.main} fillOpacity={0.9} />
+        <Path d={hills(PAD, xp, 17, 19, 1.3)} fill={pal.light} fillOpacity={0.75} />
+        <Path d={hills(PAD + 14, xp, 9, 12, 2.4)} fill={pal.mid} fillOpacity={0.8} />
         <Path d={`M${PAD} ${BASE} H${xp}`} stroke={pal.main} strokeWidth={6} strokeLinecap="round" />
         <Path d={`M${xp} ${BASE} H${PAD + width}`} stroke="#ffffff" strokeOpacity={0.3} strokeWidth={6} strokeLinecap="round" />
         <Circle cx={xp} cy={BASE} r={drag == null ? 15 : 18} fill={pal.main} opacity={0.25} />
@@ -367,29 +341,30 @@ function DynamicNotch({ track, playing, position, duration, onSeek, top = 10, id
   // ── morph between idle / volume / player ──
   const view = volVisible ? 'volume' : open ? 'player' : 'idle';
   const idx = view === 'idle' ? 0 : view === 'volume' ? 1 : 2;
-  const size = useRef(new Animated.Value(0)).current;
-  const fade = useRef(new Animated.Value(1)).current;
+  const size = useSharedValue(0);
+  const fade = useSharedValue(1);
   const [shown, setShown] = useState(view);
   useEffect(() => {
     if (view === shown) return;
-    Animated.timing(fade, { toValue: 0, duration: 80, useNativeDriver: false }).start(() => {
-      setShown(view);
-      Animated.parallel([
-        Animated.spring(size, { toValue: idx, friction: 9, tension: 70, useNativeDriver: false }),
-        Animated.timing(fade, { toValue: 1, duration: 160, delay: 60, useNativeDriver: false }),
-      ]).start();
+    fade.value = withTiming(0, { duration: 80 }, (finished) => {
+      'worklet';
+      if (!finished) return;
+      runOnJS(setShown)(view);
+      size.value = withSpring(idx, { damping: 22, stiffness: 180, mass: 0.75 });
+      fade.value = withDelay(60, withTiming(1, { duration: 160 }));
     });
-  }, [view]);
+  }, [view, shown, idx, fade, size]);
 
-  const boxStyle = useMemo(() => ({
-    width: size.interpolate({ inputRange: [0, 1, 2], outputRange: [132, 290, playerW] }),
-    height: size.interpolate({ inputRange: [0, 1, 2], outputRange: [36, 64, 156] }),
-    borderRadius: size.interpolate({ inputRange: [0, 1, 2], outputRange: [18, 32, 38] }),
+  const boxStyle = useAnimatedStyle(() => ({
+    width: interpolate(size.value, [0, 1, 2], [132, 290, playerW]),
+    height: interpolate(size.value, [0, 1, 2], [36, 64, 156]),
+    borderRadius: interpolate(size.value, [0, 1, 2], [18, 32, 38]),
     backgroundColor: '#000000',
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-  }), [size, playerW]);
+  }), [playerW]);
+  const contentStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
 
   const shownPos = seekDrag == null ? pos : seekDrag * dur;
 
@@ -403,7 +378,7 @@ function DynamicNotch({ track, playing, position, duration, onSeek, top = 10, id
           <Path d="M3 8h3l5-4v12l-5-4H3z" fill={pal.main} />
           {vol > 0.01 && <Path d="M14 7q2 3 0 6" fill="none" stroke={pal.main} strokeWidth={2} strokeLinecap="round" />}
         </Svg>
-        <HillBar width={VOL_W} value={vol} animate={isPlaying} pal={pal} onStart={onVolStart} onChange={onVolChange} onEnd={onVolEnd} />
+        <HillBar width={VOL_W} value={vol} pal={pal} onStart={onVolStart} onChange={onVolChange} onEnd={onVolEnd} />
         <Text style={{ width: 38, textAlign: 'right', color: pal.main, fontSize: 15, fontWeight: '600' }}>
           {Math.round(vol * 100)}%
         </Text>
@@ -429,7 +404,6 @@ function DynamicNotch({ track, playing, position, duration, onSeek, top = 10, id
           <HillBar
             width={playerW - 32 - PAD * 2}
             value={shownPos / dur}
-            animate={isPlaying}
             pal={pal}
             onStart={onSeekStart}
             onChange={onSeekChange}
@@ -450,9 +424,9 @@ function DynamicNotch({ track, playing, position, duration, onSeek, top = 10, id
       style={{ position: 'absolute', top, left: 0, right: 0, alignItems: 'center', zIndex: 9999, elevation: 9999 }}
     >
       <Pressable onPress={() => view === 'idle' && setOpen(true)}>
-        <Animated.View style={boxStyle}>
-          <Animated.View style={{ opacity: fade, alignItems: 'center', justifyContent: 'center' }}>{content}</Animated.View>
-        </Animated.View>
+        <Reanimated.View style={boxStyle}>
+          <Reanimated.View style={[contentStyle, { alignItems: 'center', justifyContent: 'center' }]}>{content}</Reanimated.View>
+        </Reanimated.View>
       </Pressable>
     </View>
   );

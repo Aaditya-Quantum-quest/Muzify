@@ -1,5 +1,5 @@
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { View, StyleSheet } from "react-native";
 import PagerView from "react-native-pager-view";
 
@@ -15,23 +15,11 @@ function SwipeNavigator({
   descriptors,
   actions,
   routeNames,
-  preload,
 }) {
   unstable_useReconcileTabHistory();
 
   const pagerRef = useRef(null);
-  const didPreload = useRef(false);
-
-  // Preload all swipeable screens.
-  useEffect(() => {
-    if (didPreload.current) return;
-
-    routeNames
-      .filter((name) => name !== "Player")
-      .forEach((name) => preload(name));
-
-    didPreload.current = true;
-  }, [routeNames, preload]);
+  const [visitedRoutes, setVisitedRoutes] = useState(() => new Set());
 
   // Keep the registered screen order.
   const routes = routeNames
@@ -49,6 +37,16 @@ function SwipeNavigator({
       (route) => route.key === activeRoute?.key
     )
   );
+  const activePageKey = routes[activePage]?.key;
+
+  useEffect(() => {
+    if (!activePageKey) return;
+    setVisitedRoutes((current) =>
+      current.has(activePageKey)
+        ? current
+        : new Set(current).add(activePageKey)
+    );
+  }, [activePageKey]);
 
   // Sync pager with router navigation.
   useEffect(() => {
@@ -67,7 +65,7 @@ function SwipeNavigator({
         ref={pagerRef}
         style={styles.pager}
         initialPage={activePage}
-        offscreenPageLimit={4}
+        offscreenPageLimit={1}
         overScrollMode="never"
         onPageSelected={(event) => {
           const route = routes[event.nativeEvent.position];
@@ -76,7 +74,9 @@ function SwipeNavigator({
       >
         {routes.map((route) => (
           <View key={route.key} style={styles.page}>
-            {descriptors[route.key].render()}
+            {visitedRoutes.has(route.key) || route.key === activePageKey
+              ? descriptors[route.key].render()
+              : null}
           </View>
         ))}
       </PagerView>

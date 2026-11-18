@@ -1820,25 +1820,9 @@ export default function StatisticsScreen() {
     <View
       style={[
         styles.screen,
-        { backgroundColor: "#08080f", paddingTop: insets.top },
+        { backgroundColor: "#000000", paddingTop: insets.top },
       ]}
     >
-      {/* soft glow */}
-      <View
-        pointerEvents="none"
-        style={{ position: "absolute", top: 0, left: 0, right: 0, height: 260 }}
-      >
-        <Svg width="100%" height="100%">
-          <Defs>
-            <SvgGradient id="glow" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor="#ac3287" stopOpacity={0.4} />
-              <Stop offset="1" stopColor="#ac3287" stopOpacity={0} />
-            </SvgGradient>
-          </Defs>
-          <Rect x="0" y="0" width="100%" height="100%" fill="url(#glow)" />
-        </Svg>
-      </View>
-
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
