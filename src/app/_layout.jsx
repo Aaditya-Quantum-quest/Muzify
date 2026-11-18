@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { PlayerProvider, usePlayer } from "../context/player-context";
 import { initializeDatabase } from "../databases/db";
+import DynamicNotchHost from "../components/ui/DynamicNotchHost";
 
 
 const BootRedirect = () => {
@@ -154,6 +155,9 @@ const RootLayout = () => {
               options={{ headerShown: false, freezeOnBlur: false }}
             />
           </Stack>
+          {/* Sibling of the navigator, not part of a route: the island stays
+              mounted while screens change, so no screen has to render it. */}
+          <DynamicNotchHost />
         </ThemeProvider>
       </PlayerProvider>
     </GestureHandlerRootView>
