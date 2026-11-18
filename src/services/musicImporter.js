@@ -233,51 +233,53 @@ export const importAudioFiles = async (audioFiles) => {
     existingSongs.map((song) => [song.file_uri, song])
   );
 
-  for (const fileUri of audioFiles) {
-    try {
-      const existingSong = existingMap.get(fileUri);
+  // Metadata, artwork, and stream-property reads all involve asynchronous
+  // native/file I/O. A small worker pool overlaps that I/O without starting a
+  // native extraction for every file at once (which can exhaust device memory).
+  const concurrency = Math.min(4, Math.max(1, totalFiles));
+  let nextIndex = 0;
 
-      if (existingSong) {
-        // Update existing song with missing metadata
-        const needsUpdate = await updateExistingSong(existingSong, fileUri);
-        if (needsUpdate) {
-          updated++;
-        } else {
-          skipped++;
+  const importNext = async () => {
+    while (nextIndex < totalFiles) {
+      const fileUri = audioFiles[nextIndex++];
+      try {
+        const existingSong = existingMap.get(fileUri);
+
+        if (existingSong) {
+          const needsUpdate = await updateExistingSong(existingSong, fileUri);
+          if (needsUpdate) updated++;
+          else skipped++;
+          continue;
         }
-        continue;
+
+        // Full metadata extraction runs concurrently; the insert stays
+        // conflict-safe in case another scan discovered the same URI.
+        const song = await buildSongFromUri(fileUri);
+        const result = insertSongIfAbsent(song);
+
+        if (result.changes === 0) {
+          const stored = getSongByFileUri(fileUri);
+          if (stored) existingMap.set(fileUri, stored);
+          skipped++;
+          continue;
+        }
+
+        song.id = result.lastInsertRowid;
+        existingMap.set(fileUri, song);
+        onSongAdded(song);
+        imported++;
+      } catch (error) {
+        const reason = String(error?.message ?? error).slice(0, 160);
+        const entry = failureTypes.get(reason) || { count: 0, sample: "" };
+        entry.count += 1;
+        if (!entry.sample) entry.sample = getFilenameFromUri(fileUri);
+        failureTypes.set(reason, entry);
+        failed++;
       }
-
-      // New file - full metadata extraction. The insert is conflict-safe: the
-      // snapshot above can be stale by the time the (awaited) metadata
-      // extraction finishes, e.g. when a scan overlaps the poll that retries
-      // an incomplete folder. `changes === 0` means another import stored this
-      // file first, so it is a skip rather than a failure.
-      const song = await buildSongFromUri(fileUri);
-      const result = insertSongIfAbsent(song);
-
-      if (result.changes === 0) {
-        const stored = getSongByFileUri(fileUri);
-        if (stored) existingMap.set(fileUri, stored);
-        skipped++;
-        continue;
-      }
-
-      song.id = result.lastInsertRowid;
-      onSongAdded(song);
-
-      imported++;
-      existingMap.set(fileUri, song);
-
-    } catch (error) {
-      const reason = String(error?.message ?? error).slice(0, 160);
-      const entry = failureTypes.get(reason) || { count: 0, sample: "" };
-      entry.count += 1;
-      if (!entry.sample) entry.sample = getFilenameFromUri(fileUri);
-      failureTypes.set(reason, entry);
-      failed++;
     }
-  }
+  };
+
+  await Promise.all(Array.from({ length: concurrency }, () => importNext()));
 
   if (failed > 0) {
     const kinds = [...failureTypes.entries()]
