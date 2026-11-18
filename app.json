@@ -32,7 +32,19 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      "expo-asset",
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": true,
+          "recordAudioAndroid": true,
+          "microphonePermission": "Allow Muzify to analyze songs currently playing in the app for the live visualizer. Audio is processed locally and never recorded or saved."
+        }
+      ],
+      "expo-font",
+      "expo-sqlite",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true,

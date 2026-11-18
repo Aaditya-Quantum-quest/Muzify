@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/><meta content="mobile_stack" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;family=Sora:wght@600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { colors: { "on-secondary-fixed": "#40000c", "primary": "#ffc174", "surface-container": "#1f1f22", "surface-container-low": "#1b1b1e", "on-primary": "#472a00", "on-primary-container": "#613b00", "primary-fixed": "#ffddb8", "tertiary-fixed": "#ffdf9f", "inverse-on-surface": "#303033", "secondary-fixed-dim": "#ffb3b5", "outline-variant": "#534434", "primary-fixed-dim": "#ffb95f", "surface-tint": "#ffb95f", "on-tertiary": "#402d00", "on-surface": "#e5e1e6", "surface-dim": "#131316", "on-secondary-container": "#fff1f1", "on-background": "#e5e1e6", "tertiary": "#ffc32d", "secondary-fixed": "#ffdada", "surface-container-highest": "#353438", "on-secondary": "#680019", "background": "#131316", "on-secondary-fixed-variant": "#920027", "surface": "#131316", "on-primary-fixed-variant": "#653e00", "tertiary-container": "#e0a800", "inverse-surface": "#e5e1e6", "primary-container": "#f59e0b", "on-tertiary-fixed": "#261a00", "on-primary-fixed": "#2a1700", "on-tertiary-fixed-variant": "#5c4300", "secondary": "#ffb3b5", "on-error-container": "#ffdad6", "surface-container-high": "#2a2a2d", "tertiary-fixed-dim": "#f9bd22", "error": "#ffb4ab", "on-tertiary-container": "#584000", "outline": "#a08e7a", "on-error": "#690005", "error-container": "#93000a", "on-surface-variant": "#d8c3ad", "surface-bright": "#39393c", "surface-variant": "#353438", "surface-container-lowest": "#0e0e11", "inverse-primary": "#855300", "secondary-container": "#de0541" }, borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, spacing: { "space-lg": "1.5rem", "margin": "2rem", "space-sm": "0.5rem", "space-md": "1rem", "gutter-mobile": "0.75rem", "space-xs": "0.25rem", "gutter": "1.25rem", "space-xl": "2.5rem", "margin-mobile": "1rem" }, fontFamily: { "headline-md": ["Sora"], "label-technical": ["JetBrains Mono"], "headline-lg-mobile": ["Sora"], "body-md": ["Plus Jakarta Sans"], "body-lg": ["Plus Jakarta Sans"], "display-lg": ["Sora"], "label-code-sm": ["JetBrains Mono"], "label-action": ["Plus Jakarta Sans"], "headline-sm": ["Sora"], "display-lg-mobile": ["Sora"], "headline-lg": ["Sora"], "body-sm": ["Plus Jakarta Sans"] }, fontSize: { "headline-md": ["22px", { "lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "600" }], "label-technical": ["12px", { "lineHeight": "16px", "letterSpacing": "0.04em", "fontWeight": "500" }], "headline-lg-mobile": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600" }], "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }], "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }], "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.03em", "fontWeight": "700" }], "label-code-sm": ["10px", { "lineHeight": "14px", "letterSpacing": "0.06em", "fontWeight": "500" }], "label-action": ["13px", { "lineHeight": "18px", "letterSpacing": "0.01em", "fontWeight": "600" }], "headline-sm": ["18px", { "lineHeight": "24px", "fontWeight": "600" }], "display-lg-mobile": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700" }], "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "600" }], "body-sm": ["12px", { "lineHeight": "16px", "fontWeight": "400" }] } } } }</script><style>@layer base{html,body{width:100vw;margin:0;padding:0;}body{overscroll-behavior:none;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head><body class="bg-surface text-on-surface font-body-md text-body-md antialiased flex flex-col min-h-screen selection:bg-primary selection:text-on-primary"><header class="fixed top-0 w-full z-50 pt-safe bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.35)]"><div class="h-16 px-gutter flex items-center justify-between"><div class="flex items-center gap-space-sm min-w-0"><button aria-label="Go back" class="w-11 h-11 -ml-space-xs flex items-center justify-center rounded-full text-on-surface hover:bg-surface-container-high transition-colors" onclick="history.back()"><span class="material-symbols-outlined text-[24px]">arrow_back</span></button><img alt="N Music Logo" class="h-7 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1XrA980I8qrMTFOI_bQ3M8NDa_Lixi0_040t7RV8fjjl3n7hrlhtljIAgqNIsN3tYLKvTTMhiT6tE6RnDXn1tnLxBjvq20ZsjGHTsiPhh0eXfbWUDlZ8RB-OdyNH0DtHvqWenO7WJmjo6lq6fihfyrNWPvWNbP8cLfNy2ImW4SXEhR1Hym06YFmfKrfoQNOSCMJvvwEMs_NVLLnDujDt9yLBqVGFm_7ugElTljmDZDs"/><h1 class="font-headline-sm text-headline-sm text-on-surface truncate">Now Playing</h1></div><div class="flex items-center gap-space-xs"><button aria-label="More Options" class="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors"><span class="material-symbols-outlined text-[22px]">more_vert</span></button><button aria-label="Profile" class="w-11 h-11 flex items-center justify-center rounded-full text-on-surface hover:opacity-90 transition-opacity"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBMayXr0t_AfPd9R_ZFeOmleAs4y_q81iYXyUcMenXi-4hwpBZuqToqn1ORjhCoTVuv_eCrBelP1V6MhwAQx9uR4xJZgJ7R5vpFueERtEO2hUmc5iWHXgxbv1bC0wkYBrttFIkumM5R0TrGqUsJEd9NCtyg-2OLQTxggxDeUrKdOB-ssHfKbYEIfMcJ8abgAaZ6hRYFAknA4fJdbiMexubmXatLJRwBIa76Su5LpEE8"/></button></div></div></header><main class="flex flex-col relative w-full pt-16 bg-surface flex-1 min-h-screen pb-safe"><div class="flex flex-col w-full text-on-surface select-none pb-space-xl">
+<!-- Ambient Audio Aura Backlight -->
+<div class="fixed inset-0 pointer-events-none -z-10 overflow-hidden flex items-center justify-center opacity-40">
+<div class="w-96 h-96 rounded-full bg-primary-container blur-[140px] mix-blend-screen animate-pulse"></div>
+<div class="w-80 h-80 rounded-full bg-secondary-container blur-[160px] -translate-y-24 translate-x-16 mix-blend-screen opacity-60"></div>
+</div>
+<!-- Telemetry Sub-Header & Stream Status Bar -->
+<div class="px-gutter pt-space-xs flex flex-col gap-space-xs">
+<div class="flex items-center justify-between text-on-surface-variant font-label-technical text-label-code-sm">
+<div class="flex items-center gap-space-xs truncate">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
+<span class="text-primary font-semibold tracking-wider">LIVE BITSTREAM</span>
+<span class="text-outline-variant opacity-60">•</span>
+<span class="truncate uppercase tracking-widest text-on-surface-variant font-label-technical">PLAYING FROM ALBUM: BLURRED EP</span>
+</div>
+<div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-container-high text-primary font-label-technical shadow-sm">
+<span class="material-symbols-outlined text-[12px] text-tertiary">graphic_eq</span>
+<span>DSD 11.2MHz</span>
+</div>
+</div>
+<!-- Hardware Micro-Stats Ribbon -->
+<div class="flex items-center justify-between bg-surface-container-low px-space-md py-1.5 rounded-lg shadow-inner">
+<div class="flex items-center gap-space-xs font-label-technical text-label-code-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-[13px] text-primary">verified</span>
+<span>1-BIT DIRECT DSD</span>
+</div>
+<div class="flex items-center gap-space-md font-label-technical text-label-code-sm">
+<span class="text-on-surface-variant/80">JITTER &lt; 0.02ps</span>
+<div class="w-1 h-1 rounded-full bg-outline-variant"></div>
+<span class="text-primary-fixed-dim">SNR 132dB</span>
+</div>
+</div>
+</div>
+<!-- Centerpiece: Holographic Acoustic Sleeve & Vinyl Engine -->
+<div class="relative px-gutter mt-space-md flex flex-col items-center">
+<div class="relative w-full aspect-square max-w-[340px] flex items-center justify-center">
+<!-- Reactive Sonic Radiant Glow -->
+<div class="absolute inset-2 rounded-2xl bg-gradient-to-tr from-primary-container/30 to-secondary-container/20 blur-2xl transform scale-95 transition-transform duration-700"></div>
+<!-- Vinyl Disc Peeking Out with Precision Grooves -->
+<div class="absolute -right-2 w-[88%] h-[88%] rounded-full bg-surface-container-lowest shadow-2xl flex items-center justify-center overflow-hidden border-0">
+<!-- Vinyl Micro-groove radial bands -->
+<div class="absolute inset-0 rounded-full opacity-35 bg-[radial-gradient(circle,rgba(255,255,255,0.15)_1px,transparent_1px),radial-gradient(circle,rgba(0,0,0,0.8)_8px,transparent_9px)] bg-[length:14px_14px]"></div>
+<div class="w-24 h-24 rounded-full bg-surface-container flex items-center justify-center relative shadow-lg">
+<div class="w-16 h-16 rounded-full bg-primary-container/20 flex items-center justify-center">
+<span class="font-label-code-sm text-primary text-[8px] tracking-tighter uppercase font-bold text-center">N•AUDIO<br/>MASTER</span>
+</div>
+<div class="w-4 h-4 rounded-full bg-surface-container-lowest shadow-inner"></div>
+</div>
+</div>
+<!-- Main Album Artwork Sleeve -->
+<div class="relative z-10 w-[92%] h-[92%] mr-auto rounded-2xl overflow-hidden bg-surface-container-high shadow-[0_16px_36px_rgba(0,0,0,0.8)] group">
+<img class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-700" data-alt="Dark minimal acoustic album cover featuring textured obsidian volcanic glass shards with luminous liquid amber veins and golden brass flecks. Cinematic studio lighting with shallow depth of field, high contrast deep blacks and warm amber gold highlights." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAcw3yLGX0R8we0Jt0Oruaq_5Tlof6IwpY6cpJ3RL7YcgyfoITe0I_xIA_FrDCB1BQiiW5Gvw4T60_2omhETfzIjzSz_LCl1lY_3EpsjWA4RhvFyWCcieJ7UA8DnWgs02uQg5pjoqJMYniwSjWkgBETRVYBFpCnXt7xn-jyI1odd407Li_6P63cXn35TkoEkcfIQxqEoiDiF9QDBWO4G8uAJuLRxcJzx7bLq0KFrkaN"/>
+<!-- Specular Glass Gradient Overlays -->
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest/90 via-surface-container-lowest/20 to-transparent"></div>
+<div class="absolute inset-0 bg-gradient-to-tr from-primary-container/10 via-transparent to-secondary/10 pointer-events-none"></div>
+<!-- Master Foil Seal Badge -->
+<div class="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-lowest/70 backdrop-blur-md shadow-md">
+<span class="material-symbols-outlined text-[13px] text-tertiary" style="font-variation-settings: 'FILL' 1;">stars</span>
+<span class="font-label-technical text-label-code-sm tracking-widest text-primary-fixed uppercase font-semibold">Master Tape Copy</span>
+</div>
+<div class="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-surface-container-lowest/70 backdrop-blur-md font-label-technical text-label-code-sm text-primary">
+          № 0842
+        </div>
+<!-- Float Floating Audio Processing Badges -->
+<div class="absolute bottom-3 inset-x-3 flex items-center justify-between gap-space-xs">
+<button class="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-surface-container-high/80 backdrop-blur-md text-on-surface font-label-action text-body-sm shadow-sm active:scale-95 transition-all">
+<span class="material-symbols-outlined text-[14px] text-primary">mic_double</span>
+<span class="text-body-sm">Stem Iso <span class="text-primary font-bold">On</span></span>
+</button>
+<button class="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-surface-container-high/80 backdrop-blur-md text-on-surface font-label-action text-body-sm shadow-sm active:scale-95 transition-all">
+<span class="material-symbols-outlined text-[14px] text-secondary">surround_sound</span>
+<span class="text-body-sm">360 HRTF <span class="text-secondary font-bold">Active</span></span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Track Meta & Master Telemetry Strip -->
+<div class="px-gutter mt-space-md flex flex-col gap-space-xs">
+<div class="flex items-start justify-between gap-space-sm">
+<div class="min-w-0 flex-1">
+<div class="flex items-center gap-2">
+<h2 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface font-bold tracking-tight truncate">Obsidian Resonance</h2>
+</div>
+<div class="flex items-center gap-2 mt-0.5">
+<span class="font-body-md text-body-md text-on-surface-variant font-medium truncate">Kiasmos • Erased Tapes</span>
+<span class="material-symbols-outlined text-[16px] text-primary" style="font-variation-settings: 'FILL' 1;">verified</span>
+</div>
+</div>
+<div class="flex items-center gap-1">
+<button aria-label="Favorite track" class="w-10 h-10 rounded-full flex items-center justify-center bg-surface-container text-primary shadow-sm hover:scale-105 active:scale-95 transition-all" id="likeBtn">
+<span class="material-symbols-outlined text-[22px]" style="font-variation-settings: 'FILL' 1;">favorite</span>
+</button>
+<button aria-label="Add to collection" class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:text-on-surface bg-surface-container-low shadow-sm active:scale-95 transition-all">
+<span class="material-symbols-outlined text-[20px]">library_add</span>
+</button>
+</div>
+</div>
+<!-- Dense Precision Telemetry Pill -->
+<div class="mt-space-xs flex items-center justify-between px-space-md py-2 rounded-xl bg-surface-container-low text-on-surface-variant font-label-technical text-label-code-sm shadow-inner">
+<div class="flex items-center gap-1.5 text-primary">
+<span class="material-symbols-outlined text-[14px]">tune</span>
+<span class="font-semibold tracking-wider">FLAC 384kHz / 32-bit</span>
+</div>
+<div class="flex items-center gap-space-sm text-outline">
+<span>9216 kbps</span>
+<span>•</span>
+<span class="text-tertiary-fixed font-medium">+6.2dB HD</span>
+<span>•</span>
+<span class="text-on-surface">PURE DIRECT</span>
+</div>
+</div>
+</div>
+<!-- Interactive Acoustic Scrubbing Waveform -->
+<div class="px-gutter mt-space-md flex flex-col gap-1.5">
+<!-- Waveform Amplitude Bar Cluster -->
+<div class="relative w-full h-14 bg-surface-container-lowest rounded-xl px-2 py-1 flex items-center justify-between gap-[2px] overflow-hidden cursor-pointer shadow-inner" id="waveformContainer">
+<!-- Stereo Phase Coherence Watermark Indicator -->
+<div class="absolute right-3 top-1 font-label-technical text-[9px] text-outline tracking-wider z-20 flex items-center gap-1">
+<span class="w-1 h-1 rounded-full bg-primary animate-pulse"></span>
+        PHASE: 100% STEREO ALIGNED
+      </div>
+<!-- Left Hand Played Section Gradient Shroud -->
+<div class="absolute left-0 top-0 bottom-0 w-[60%] bg-gradient-to-r from-primary-container/20 to-primary/10 pointer-events-none z-0"></div>
+<!-- Extruded Glowing Playhead Pin -->
+<div class="absolute left-[60%] top-0 bottom-0 w-[2px] bg-primary z-20 shadow-[0_0_12px_#ffc174] flex items-center justify-center">
+<div class="w-3 h-3 rounded-full bg-primary-fixed shadow-md border-2 border-surface-container-lowest"></div>
+</div>
+<!-- Procedural Amplitude Bars (38 sample slices) -->
+<div class="w-full h-full flex items-center justify-between gap-[2px] z-10">
+<div class="w-1 rounded-full h-[25%] bg-primary"></div>
+<div class="w-1 rounded-full h-[38%] bg-primary"></div>
+<div class="w-1 rounded-full h-[52%] bg-primary"></div>
+<div class="w-1 rounded-full h-[70%] bg-primary"></div>
+<div class="w-1 rounded-full h-[85%] bg-primary"></div>
+<div class="w-1 rounded-full h-[60%] bg-primary"></div>
+<div class="w-1 rounded-full h-[40%] bg-primary"></div>
+<div class="w-1 rounded-full h-[68%] bg-primary"></div>
+<div class="w-1 rounded-full h-[95%] bg-primary"></div>
+<div class="w-1 rounded-full h-[80%] bg-primary"></div>
+<div class="w-1 rounded-full h-[50%] bg-primary"></div>
+<div class="w-1 rounded-full h-[75%] bg-primary"></div>
+<div class="w-1 rounded-full h-[90%] bg-primary"></div>
+<div class="w-1 rounded-full h-[100%] bg-primary"></div>
+<div class="w-1 rounded-full h-[82%] bg-primary"></div>
+<div class="w-1 rounded-full h-[64%] bg-primary"></div>
+<div class="w-1 rounded-full h-[45%] bg-primary"></div>
+<div class="w-1 rounded-full h-[58%] bg-primary"></div>
+<div class="w-1 rounded-full h-[72%] bg-primary"></div>
+<div class="w-1 rounded-full h-[88%] bg-primary"></div>
+<div class="w-1 rounded-full h-[76%] bg-primary"></div>
+<div class="w-1 rounded-full h-[65%] bg-primary"></div>
+<div class="w-1 rounded-full h-[50%] bg-primary"></div>
+<!-- Playhead threshold transition into unplayed zinc bars -->
+<div class="w-1 rounded-full h-[42%] bg-surface-container-highest"></div>
+<div class="w-1 rounded-full h-[60%] bg-surface-container-highest"></div>
+<div class="w-1 rounded-full h-[75%] bg-surface-container-highest"></div>
+<div class="w-1 rounded-full h-[62%] bg-surface-container-highest"></div>
+<div class="w-1 rounded-full h-[48%] bg-surface-container-highest"></div>
+<div class="w-1 rounded-full h-[68%] bg-surface-container-highest"></div>
+<div class="w-1 rounded-full h-[84%] bg-surface-container-highest"></div>
+<div class="w-1 rounded-full h-[70%] bg-surface-container-highest"></div>
+<div class="w-1 rounded-full h-[52%] bg-surface-container-highest"></div>
+<div class="w-1 rounded-full h-[40%] bg-surface-container-highest"></div>
+<div class="w-1 rounded-full h-[58%] bg-surface-container-highest"></div>
+<div class="w-1 rounded-full h-[45%] bg-surface-container-highest"></div>
+<div class="w-1 rounded-full h-[32%] bg-surface-container-highest"></div>
+<div class="w-1 rounded-full h-[22%] bg-surface-container-highest"></div>
+<div class="w-1 rounded-full h-[15%] bg-surface-container-highest"></div>
+</div>
+</div>
+<!-- Timestamp Metrics & Markers -->
+<div class="flex items-center justify-between font-label-technical text-label-code-sm text-on-surface-variant px-1">
+<div class="flex items-center gap-2">
+<span class="text-primary font-semibold">02:48</span>
+<span class="text-outline-variant">•</span>
+<span class="text-outline text-[9px] uppercase tracking-wider">A-B LOOP OFF</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="text-outline text-[9px]">TOTAL 04:38</span>
+<span class="text-outline-variant">•</span>
+<span class="text-on-surface font-semibold">-01:50</span>
+</div>
+</div>
+</div>
+<!-- Master Audiophile Transport & Playback Controls Deck -->
+<div class="px-gutter mt-space-sm flex flex-col gap-space-sm">
+<div class="flex items-center justify-between py-space-xs">
+<!-- Shuffle Smart Dynamic -->
+<button aria-label="Toggle shuffle" class="w-11 h-11 rounded-full flex items-center justify-center text-primary bg-surface-container-high/60 shadow-sm active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-[20px]">shuffle</span>
+</button>
+<!-- Previous Track -->
+<button aria-label="Skip to previous" class="w-12 h-12 rounded-full flex items-center justify-center text-on-surface hover:text-primary transition-colors active:scale-90">
+<span class="material-symbols-outlined text-[28px]">skip_previous</span>
+</button>
+<!-- Center Heavyweight Play/Pause Vault Button -->
+<div class="relative flex items-center justify-center">
+<!-- Radial Amber Glow Aura -->
+<div class="absolute w-20 h-20 rounded-full bg-primary-container blur-xl opacity-60"></div>
+<button aria-label="Play or Pause" class="relative z-10 w-18 h-18 w-[72px] h-[72px] rounded-full bg-primary-container text-on-primary-container flex items-center justify-center shadow-[0_8px_24px_rgba(245,158,11,0.45)] hover:scale-105 active:scale-95 transition-all" id="masterPlayBtn">
+<span class="material-symbols-outlined text-[36px] text-on-primary" style="font-variation-settings: 'FILL' 1;">pause</span>
+</button>
+</div>
+<!-- Next Track -->
+<button aria-label="Skip to next" class="w-12 h-12 rounded-full flex items-center justify-center text-on-surface hover:text-primary transition-colors active:scale-90">
+<span class="material-symbols-outlined text-[28px]">skip_next</span>
+</button>
+<!-- Repeat / Loop Mode -->
+<button aria-label="Toggle loop mode" class="w-11 h-11 rounded-full flex items-center justify-center text-on-surface-variant bg-surface-container-high/60 shadow-sm active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-[20px]">repeat</span>
+</button>
+</div>
+<!-- Master Gain Staging & Volume Fader Bar -->
+<div class="bg-surface-container-low px-space-md py-2.5 rounded-xl shadow-sm flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-[18px] text-on-surface-variant">volume_down</span>
+<div class="relative flex-1 h-3 flex items-center group cursor-pointer">
+<div class="w-full h-1.5 rounded-full bg-surface-container-highest overflow-hidden">
+<div class="w-[78%] h-full bg-gradient-to-r from-primary to-tertiary-fixed rounded-full"></div>
+</div>
+<div class="absolute left-[78%] -translate-x-1/2 w-4 h-4 rounded-full bg-primary-fixed shadow-md border-2 border-surface-container-lowest transition-transform group-hover:scale-125"></div>
+</div>
+<span class="material-symbols-outlined text-[18px] text-on-surface-variant">volume_up</span>
+<span class="font-label-technical text-label-code-sm text-primary w-11 text-right font-medium">-4.5dB</span>
+</div>
+</div>
+<!-- Audiophile Quick-Access Processing Deck (Horizontal Bento Modules) -->
+<div class="px-gutter mt-space-md flex flex-col gap-space-sm">
+<div class="flex items-center justify-between text-label-technical">
+<span class="text-on-surface font-semibold uppercase tracking-wider font-label-technical text-label-technical">Audiophile Engine Deck</span>
+<span class="text-primary font-label-technical text-label-code-sm cursor-pointer hover:underline">CONFIG DSP</span>
+</div>
+<!-- Bento Grid Cards: 2 Columns on Mobile -->
+<div class="grid grid-cols-2 gap-space-sm">
+<!-- EQ Curve Card -->
+<div class="bg-surface-container p-space-sm rounded-xl shadow-sm flex flex-col justify-between gap-space-xs cursor-pointer hover:bg-surface-container-high transition-colors">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-1.5 text-primary">
+<span class="material-symbols-outlined text-[16px]">equalizer</span>
+<span class="font-label-action text-body-sm font-semibold">Zero-Phase FIR</span>
+</div>
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+</div>
+<!-- Parametric Curve Inline Mini-Visualizer -->
+<div class="w-full h-8 flex items-center justify-center">
+<svg class="w-full h-full text-primary" fill="none" viewbox="0 0 100 30">
+<path d="M 0,15 C 20,15 25,6 40,8 C 55,10 65,24 80,18 C 90,14 95,15 100,15" stroke="currentColor" stroke-linecap="round" stroke-width="2"></path>
+<path d="M 0,15 C 20,15 25,6 40,8 C 55,10 65,24 80,18 C 90,14 95,15 100,15 L 100,30 L 0,30 Z" fill="currentColor" fill-opacity="0.12"></path>
+</svg>
+</div>
+<div class="flex items-center justify-between font-label-technical text-label-code-sm text-on-surface-variant">
+<span>Target: Warm Harman</span>
+<span class="text-primary font-bold">+1.8dB</span>
+</div>
+</div>
+<!-- Output DAC Card -->
+<div class="bg-surface-container p-space-sm rounded-xl shadow-sm flex flex-col justify-between gap-space-xs cursor-pointer hover:bg-surface-container-high transition-colors">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-1.5 text-secondary">
+<span class="material-symbols-outlined text-[16px]">headphones</span>
+<span class="font-label-action text-body-sm font-semibold">Balanced 4.4mm</span>
+</div>
+<span class="material-symbols-outlined text-[14px] text-on-surface-variant">swap_horiz</span>
+</div>
+<div class="my-1">
+<p class="font-body-sm text-body-sm text-on-surface font-semibold truncate">ES9038PRO Dual DAC</p>
+<p class="font-label-technical text-label-code-sm text-on-surface-variant">High-Gain • 4.1 Vrms</p>
+</div>
+<div class="flex items-center gap-1 font-label-technical text-label-code-sm text-secondary font-medium">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+<span>PENTACONN LOCKED</span>
+</div>
+</div>
+<!-- Synced Lyrics Snip Card -->
+<div class="bg-surface-container p-space-sm rounded-xl shadow-sm flex flex-col justify-between gap-space-xs col-span-2 cursor-pointer hover:bg-surface-container-high transition-colors">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-1.5 text-primary">
+<span class="material-symbols-outlined text-[16px]">lyrics</span>
+<span class="font-label-action text-body-sm font-semibold">Synced Studio Lyrics</span>
+</div>
+<span class="font-label-technical text-label-code-sm text-on-surface-variant">02:48 / SYLLABLE TRACKED</span>
+</div>
+<div class="py-1">
+<p class="font-headline-sm text-headline-sm text-on-surface font-medium leading-snug">
+            “We dissolve into the <span class="text-primary bg-primary/10 px-1 py-0.5 rounded font-bold shadow-sm">frequency</span> of night...”
+          </p>
+<p class="font-body-sm text-body-sm text-outline mt-1 truncate">
+            Upcoming: Every heartbeat mapped to analog tape delay
+          </p>
+</div>
+<div class="flex items-center justify-between pt-1">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+<span class="font-label-technical text-label-code-sm text-on-surface-variant">HRTF Spatial Stage: Concert Hall (120%)</span>
+</div>
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant">chevron_right</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<script>
+  // Simple micro-interactions for tactile feel
+  const likeBtn = document.getElementById('likeBtn');
+  if (likeBtn) {
+    likeBtn.addEventListener('click', () => {
+      const icon = likeBtn.querySelector('.material-symbols-outlined');
+      if (icon) {
+        const isFilled = icon.style.fontVariationSettings.includes("'FILL' 1");
+        icon.style.fontVariationSettings = isFilled ? "'FILL' 0" : "'FILL' 1";
+        likeBtn.classList.toggle('text-primary');
+        likeBtn.classList.toggle('text-on-surface-variant');
+      }
+    });
+  }
+
+  const masterPlayBtn = document.getElementById('masterPlayBtn');
+  if (masterPlayBtn) {
+    masterPlayBtn.addEventListener('click', () => {
+      const icon = masterPlayBtn.querySelector('.material-symbols-outlined');
+      if (icon) {
+        icon.textContent = icon.textContent === 'pause' ? 'play_arrow' : 'pause';
+      }
+    });
+  }
+</script></main></body></html>
